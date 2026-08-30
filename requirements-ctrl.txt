@@ -1,0 +1,10 @@
+# venv-ctrl: Python 3.9 (Ryu breaks on 3.10+, see docs/decisions.md).
+# Install with: python3.9 -m venv venv-ctrl && venv-ctrl/bin/pip install -r requirements-ctrl.txt
+ryu==4.34
+eventlet==0.30.2
+dnspython==2.2.1
+setuptools<60
+networkx
+numpy
+requests
+pyyaml

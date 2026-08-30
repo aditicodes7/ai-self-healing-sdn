@@ -1,0 +1,322 @@
+"""Loads config/config.yaml into frozen dataclasses.
+
+The dataclasses are the single source of truth for what a valid config looks
+like: a malformed or incomplete YAML file fails fast at load time instead of
+surfacing as a KeyError deep inside a controller or training script.
+"""
+from __future__ import annotations
+
+import dataclasses
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_DEFAULT_CONFIG_PATH = _REPO_ROOT / "config" / "config.yaml"
+
+
+@dataclasses.dataclass(frozen=True)
+class ProjectConfig:
+    name: str
+    controller_backend: str | None
+
+
+@dataclasses.dataclass(frozen=True)
+class ControllerConfig:
+    openflow_version: str
+    observe_links: bool
+    of_listen_host: str
+    of_listen_port: int
+
+
+@dataclasses.dataclass(frozen=True)
+class TelemetryConfig:
+    interval_s: float
+    probe_timeout_s: float
+    echo_interval_s: float
+
+
+@dataclasses.dataclass(frozen=True)
+class FeaturesConfig:
+    windows: tuple[int, ...]
+    ewma_alpha: float
+    baseline_healthy_windows: int
+    min_history_for_window: bool
+
+
+@dataclasses.dataclass(frozen=True)
+class LabelConfig:
+    horizon_s: float
+
+
+@dataclasses.dataclass(frozen=True)
+class MLConfig:
+    threshold: float
+    model_path: str
+    metadata_path: str
+    candidate_models: tuple[str, ...]
+
+
+@dataclasses.dataclass(frozen=True)
+class PersistenceConfig:
+    window: int
+    consecutive: int
+    uncertainty_band: tuple[float, float]
+
+
+@dataclasses.dataclass(frozen=True)
+class StabilityConfig:
+    cooldown_s: float
+    route_hold_s: float
+    min_improvement: float
+
+
+@dataclasses.dataclass(frozen=True)
+class PathWeightsConfig:
+    utilization: float
+    latency: float
+    loss: float
+    hop_count: float
+
+
+@dataclasses.dataclass(frozen=True)
+class PathConfig:
+    k_shortest: int
+    weights: PathWeightsConfig
+
+
+@dataclasses.dataclass(frozen=True)
+class RLRewardWeightsConfig:
+    w1_throughput: float
+    w2_latency: float
+    w3_loss: float
+    w4_recovery_success: float
+    w5_max_utilization_after: float
+    w6_reroute_cost: float
+    w7_oscillation_penalty: float
+    w8_failed_remediation: float
+
+
+@dataclasses.dataclass(frozen=True)
+class RLConfig:
+    algorithm: str
+    timeout_ms: int
+    train_steps: int
+    eval_episodes: int
+    policy_path: str
+    reward_weights: RLRewardWeightsConfig
+
+
+@dataclasses.dataclass(frozen=True)
+class FlowConfig:
+    priority_remediated: int
+    priority_default: int
+    hard_timeout_s: int
+    idle_timeout_s: int
+
+
+@dataclasses.dataclass(frozen=True)
+class VerifyToleranceConfig:
+    latency_pct: float
+    loss_pct: float
+
+
+@dataclasses.dataclass(frozen=True)
+class VerifyConfig:
+    settle_s: float
+    windows: int
+    tolerance: VerifyToleranceConfig
+
+
+@dataclasses.dataclass(frozen=True)
+class RemediationConfig:
+    max_retries: int
+
+
+@dataclasses.dataclass(frozen=True)
+class TrafficConfig:
+    iperf3_port: int
+    iperf3_protocol: str
+
+
+@dataclasses.dataclass(frozen=True)
+class DatabaseConfig:
+    path: str
+    wal: bool
+    retention_days: int
+
+
+@dataclasses.dataclass(frozen=True)
+class APIConfig:
+    host: str
+    port: int
+
+
+@dataclasses.dataclass(frozen=True)
+class SeedsConfig:
+    global_: int
+    dataset_runs: tuple[int, ...]
+    rl_train: int
+    eval: int
+
+
+@dataclasses.dataclass(frozen=True)
+class Config:
+    project: ProjectConfig
+    controller: ControllerConfig
+    telemetry: TelemetryConfig
+    features: FeaturesConfig
+    label: LabelConfig
+    ml: MLConfig
+    persistence: PersistenceConfig
+    stability: StabilityConfig
+    path: PathConfig
+    rl: RLConfig
+    flow: FlowConfig
+    verify: VerifyConfig
+    remediation: RemediationConfig
+    traffic: TrafficConfig
+    database: DatabaseConfig
+    api: APIConfig
+    seeds: SeedsConfig
+
+
+class ConfigError(ValueError):
+    """Raised when config/config.yaml is missing keys or has the wrong shape."""
+
+
+def _get(d: dict, key: str, section: str) -> Any:
+    if key not in d:
+        raise ConfigError(f"config section '{section}' is missing required key '{key}'")
+    return d[key]
+
+
+def load_config(path: str | Path | None = None) -> Config:
+    cfg_path = Path(path) if path is not None else _DEFAULT_CONFIG_PATH
+    if not cfg_path.exists():
+        raise ConfigError(f"config file not found: {cfg_path}")
+
+    with open(cfg_path, "r") as f:
+        raw = yaml.safe_load(f)
+
+    if not isinstance(raw, dict):
+        raise ConfigError(f"config file did not parse to a mapping: {cfg_path}")
+
+    try:
+        project = _get(raw, "project", "root")
+        controller = _get(raw, "controller", "root")
+        telemetry = _get(raw, "telemetry", "root")
+        features = _get(raw, "features", "root")
+        label = _get(raw, "label", "root")
+        ml = _get(raw, "ml", "root")
+        persistence = _get(raw, "persistence", "root")
+        stability = _get(raw, "stability", "root")
+        path_cfg = _get(raw, "path", "root")
+        rl = _get(raw, "rl", "root")
+        flow = _get(raw, "flow", "root")
+        verify = _get(raw, "verify", "root")
+        remediation = _get(raw, "remediation", "root")
+        traffic = _get(raw, "traffic", "root")
+        database = _get(raw, "database", "root")
+        api = _get(raw, "api", "root")
+        seeds = _get(raw, "seeds", "root")
+
+        uncertainty_band = tuple(_get(persistence, "uncertainty_band", "persistence"))
+        if len(uncertainty_band) != 2 or uncertainty_band[0] >= uncertainty_band[1]:
+            raise ConfigError(
+                "persistence.uncertainty_band must be [low, high] with low < high, "
+                f"got {uncertainty_band}"
+            )
+
+        config = Config(
+            project=ProjectConfig(
+                name=_get(project, "name", "project"),
+                controller_backend=project.get("controller_backend"),
+            ),
+            controller=ControllerConfig(
+                openflow_version=_get(controller, "openflow_version", "controller"),
+                observe_links=_get(controller, "observe_links", "controller"),
+                of_listen_host=_get(controller, "of_listen_host", "controller"),
+                of_listen_port=_get(controller, "of_listen_port", "controller"),
+            ),
+            telemetry=TelemetryConfig(
+                interval_s=_get(telemetry, "interval_s", "telemetry"),
+                probe_timeout_s=_get(telemetry, "probe_timeout_s", "telemetry"),
+                echo_interval_s=_get(telemetry, "echo_interval_s", "telemetry"),
+            ),
+            features=FeaturesConfig(
+                windows=tuple(_get(features, "windows", "features")),
+                ewma_alpha=_get(features, "ewma_alpha", "features"),
+                baseline_healthy_windows=_get(features, "baseline_healthy_windows", "features"),
+                min_history_for_window=_get(features, "min_history_for_window", "features"),
+            ),
+            label=LabelConfig(horizon_s=_get(label, "horizon_s", "label")),
+            ml=MLConfig(
+                threshold=_get(ml, "threshold", "ml"),
+                model_path=_get(ml, "model_path", "ml"),
+                metadata_path=_get(ml, "metadata_path", "ml"),
+                candidate_models=tuple(_get(ml, "candidate_models", "ml")),
+            ),
+            persistence=PersistenceConfig(
+                window=_get(persistence, "window", "persistence"),
+                consecutive=_get(persistence, "consecutive", "persistence"),
+                uncertainty_band=(float(uncertainty_band[0]), float(uncertainty_band[1])),
+            ),
+            stability=StabilityConfig(
+                cooldown_s=_get(stability, "cooldown_s", "stability"),
+                route_hold_s=_get(stability, "route_hold_s", "stability"),
+                min_improvement=_get(stability, "min_improvement", "stability"),
+            ),
+            path=PathConfig(
+                k_shortest=_get(path_cfg, "k_shortest", "path"),
+                weights=PathWeightsConfig(**_get(path_cfg, "weights", "path")),
+            ),
+            rl=RLConfig(
+                algorithm=_get(rl, "algorithm", "rl"),
+                timeout_ms=_get(rl, "timeout_ms", "rl"),
+                train_steps=_get(rl, "train_steps", "rl"),
+                eval_episodes=_get(rl, "eval_episodes", "rl"),
+                policy_path=_get(rl, "policy_path", "rl"),
+                reward_weights=RLRewardWeightsConfig(**_get(rl, "reward_weights", "rl")),
+            ),
+            flow=FlowConfig(
+                priority_remediated=_get(flow, "priority_remediated", "flow"),
+                priority_default=_get(flow, "priority_default", "flow"),
+                hard_timeout_s=_get(flow, "hard_timeout_s", "flow"),
+                idle_timeout_s=_get(flow, "idle_timeout_s", "flow"),
+            ),
+            verify=VerifyConfig(
+                settle_s=_get(verify, "settle_s", "verify"),
+                windows=_get(verify, "windows", "verify"),
+                tolerance=VerifyToleranceConfig(**_get(verify, "tolerance", "verify")),
+            ),
+            remediation=RemediationConfig(
+                max_retries=_get(remediation, "max_retries", "remediation"),
+            ),
+            traffic=TrafficConfig(
+                iperf3_port=_get(traffic, "iperf3_port", "traffic"),
+                iperf3_protocol=_get(traffic, "iperf3_protocol", "traffic"),
+            ),
+            database=DatabaseConfig(
+                path=_get(database, "path", "database"),
+                wal=_get(database, "wal", "database"),
+                retention_days=_get(database, "retention_days", "database"),
+            ),
+            api=APIConfig(
+                host=_get(api, "host", "api"),
+                port=_get(api, "port", "api"),
+            ),
+            seeds=SeedsConfig(
+                global_=_get(seeds, "global", "seeds"),
+                dataset_runs=tuple(_get(seeds, "dataset_runs", "seeds")),
+                rl_train=_get(seeds, "rl_train", "seeds"),
+                eval=_get(seeds, "eval", "seeds"),
+            ),
+        )
+    except ConfigError:
+        raise
+    except (TypeError, KeyError) as exc:
+        raise ConfigError(f"malformed config structure: {exc}") from exc
+
+    return config

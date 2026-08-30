@@ -1,0 +1,15 @@
+# venv-ml: Python 3.11.
+# Install with: python3.11 -m venv venv-ml && venv-ml/bin/pip install -r requirements-ml.txt
+scikit-learn
+pandas
+numpy
+matplotlib
+gymnasium
+stable-baselines3
+sb3-contrib
+fastapi
+uvicorn
+pytest
+pytest-cov
+pyyaml
+joblib

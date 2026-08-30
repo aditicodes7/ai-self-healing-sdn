@@ -1,0 +1,116 @@
+# ai-self-healing-sdn master configuration.
+# Every runtime tunable lives here. Nothing is hardcoded in modules.
+# See docs/architecture.md for the meaning of each derived feature/formula
+# and docs/decisions.md for why specific defaults were chosen.
+
+project:
+  name: ai-self-healing-sdn
+  # BACKEND is written here by the Phase 2 GO/NO-GO smoke test ("ryu" or "os-ken").
+  # Left null until that phase actually runs so this file never states an
+  # untested fact.
+  controller_backend: null
+
+controller:
+  openflow_version: "1.3"
+  observe_links: true
+  of_listen_host: "0.0.0.0"
+  of_listen_port: 6653
+
+telemetry:
+  interval_s: 2
+  probe_timeout_s: 1.0
+  # OFPEchoRequest RTT is halved to estimate one-way latency; see
+  # docs/architecture.md#latency-estimate for the full derivation and the
+  # Phase 5 validation against independent ping ground truth.
+  echo_interval_s: 2
+
+features:
+  windows: [3, 5, 10]
+  ewma_alpha: 0.2
+  baseline_healthy_windows: 20
+  # Explicit NaN policy (never silent fillna(0)): if fewer than `windows`
+  # samples exist yet, rolling stats for that window are emitted as null and
+  # the consumer (ML pipeline) must treat null as "insufficient history",
+  # not zero.
+  min_history_for_window: true
+
+label:
+  horizon_s: 10
+
+ml:
+  threshold: 0.75
+  model_path: models/degradation_model.joblib
+  metadata_path: models/metadata.json
+  candidate_models:
+    - histgradientboosting
+    - randomforest
+    - logisticregression_baseline
+
+persistence:
+  window: 4
+  consecutive: 3
+  uncertainty_band: [0.45, 0.60]
+
+stability:
+  cooldown_s: 30
+  route_hold_s: 60
+  min_improvement: 0.15
+
+path:
+  k_shortest: 4
+  weights:
+    utilization: 1.0
+    latency: 1.0
+    loss: 2.0
+    hop_count: 0.25
+
+rl:
+  algorithm: MaskablePPO
+  timeout_ms: 200
+  train_steps: 300000
+  eval_episodes: 50
+  policy_path: models/routing_policy.zip
+  reward_weights:
+    w1_throughput: 1.0
+    w2_latency: 1.0
+    w3_loss: 1.0
+    w4_recovery_success: 2.0
+    w5_max_utilization_after: 1.0
+    w6_reroute_cost: 0.5
+    w7_oscillation_penalty: 1.5
+    w8_failed_remediation: 2.0
+
+flow:
+  priority_remediated: 200
+  priority_default: 100
+  hard_timeout_s: 300
+  idle_timeout_s: 0
+
+verify:
+  settle_s: 8
+  windows: 3
+  tolerance:
+    latency_pct: 0.20
+    loss_pct: 0.20
+
+remediation:
+  max_retries: 2
+
+traffic:
+  iperf3_port: 5201
+  iperf3_protocol: tcp
+
+database:
+  path: database/network.db
+  wal: true
+  retention_days: 30
+
+api:
+  host: "0.0.0.0"
+  port: 8000
+
+seeds:
+  global: 42
+  dataset_runs: [1, 2, 3, 4, 5, 6, 7, 8]
+  rl_train: 42
+  eval: 100
