@@ -28,8 +28,8 @@ Never re-ask anything recorded here.
 
 ## Current phase
 
-**Phase 5 — COMPLETE.** Telemetry collector + DB writes + latency validation.
-Next: Phase 6 (shared feature pipeline, train/live equality test).
+**Phase 6 — COMPLETE.** Shared feature pipeline, train/live equality test.
+Next: Phase 7 (failure injector, 6 fault types, scheduled).
 
 ## Completed components
 
@@ -153,10 +153,40 @@ Next: Phase 6 (shared feature pipeline, train/live equality test).
   its practical consequence (use relative changes, not absolute values,
   in later phases).
 
+**Phase 6 — shared feature pipeline:**
+- `common/features.py` — pure Python + numpy (no pandas; imports
+  unchanged under venv-ctrl's Python 3.9, verified directly), so it's the
+  one place both ML training (batch, Phase 9) and live controller
+  inference (incremental, Phase 10) compute feature vectors.
+  `compute_base_metrics()` derives utilization/loss_rate/error_rate/
+  packet_rate from two consecutive raw telemetry counter rows (formulas
+  documented in the module docstring, matching docs/architecture.md's
+  eventual consolidated version); returns `None` (not zeroed fields) on
+  a counter reset or non-positive `dt`. `compute_feature_vector()` takes
+  a link's full RawWindow history plus an index and computes, using only
+  `history[:index+1]`: rolling mean/std/linear-fit-slope over windows
+  (3, 5, 10) for utilization/loss_rate/latency_ms/error_rate, first
+  difference, deviation from a per-link EWMA baseline fixed from the
+  first `baseline_windows` samples, and the current packet_rate — 45
+  feature keys total. Every entry that needs more history than exists is
+  explicitly `None`, never silently 0 (enforced by test).
+- **Gate result:** `tests/unit/test_features.py::
+  test_train_and_live_paths_produce_identical_feature_vectors` — builds
+  25 raw samples, computes feature vectors via a batch/training call
+  pattern and an incremental/live call pattern, asserts every single
+  vector is identical at every index. **Green.** 13/13 feature tests
+  passing (base-metric derivation, counter-reset handling, rolling
+  stats correctness against manual computation, NaN policy, EWMA
+  baseline, linear-fit slope on a known-linear series).
+- Full `requirements-ml.txt` stack now installed in `venv-ml` (numpy,
+  pandas, scikit-learn, matplotlib, gymnasium, stable-baselines3,
+  sb3-contrib, fastapi, uvicorn, joblib) — needed starting this phase,
+  installed once now rather than piecemeal per future phase.
+
 ## Pending components
 
-Phase 6 onward: shared feature pipeline (train/live equality test), then
-the failure injector.
+Phase 7 onward: failure injector (6 fault types, scheduled), then dataset
+generation.
 
 ## Known issues
 
@@ -172,14 +202,13 @@ horizon 10s, verify settle 8s. `project.controller_backend: ryu`.
 
 ## Test status
 
-33/33 unit tests passing (`tests/unit/test_config.py`, `test_db.py`,
-`test_logging.py`, `test_of_compat.py`) under venv-ml (Python 3.11.9) on
-macOS, 97% coverage on `common/` + `database/`. Phases 2-5's Mininet/Ryu
-gates all passed with real measured results in `sdn-vm`: 0% packet loss
-(Phases 2-4), discovered topology exactly matching the YAML (Phase 4),
-telemetry rows growing with sane deltas and latency probes validated
-against real ping (Phase 5, with the accuracy caveat in
-`docs/limitations.md`).
+46/46 unit tests passing (`test_config.py`, `test_db.py`, `test_logging.py`,
+`test_of_compat.py`, `test_features.py`) under venv-ml (Python 3.11.9) on
+macOS, 96% coverage on `common/` + `database/`. Phases 2-5's Mininet/Ryu
+gates all passed with real measured results in `sdn-vm`, reproduced twice
+independently for Phase 5. Phase 6's train/live feature-equality gate
+passed; `common/features.py` also verified importing and running
+correctly under the real venv-ctrl (Python 3.9, no pandas).
 
 ## Experiment status
 
