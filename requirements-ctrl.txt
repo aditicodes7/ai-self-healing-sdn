@@ -1,9 +1,23 @@
 # venv-ctrl: Python 3.9 (Ryu breaks on 3.10+, see docs/decisions.md).
-# Install with: python3.9 -m venv venv-ctrl && venv-ctrl/bin/pip install -r requirements-ctrl.txt
+#
+# Do NOT `pip install -r` this file directly for ryu/eventlet/dnspython/
+# setuptools: Ryu 4.34's sdist needs a build workaround (pbr reports version
+# 0.0.0 outside a git checkout) and dnspython==2.2.1 conflicts with
+# eventlet==0.30.2's own pinned dnspython<2.0.0 requirement. Run
+# scripts/setup_env.sh ctrl instead, which handles both correctly. This
+# file documents the resulting pinned versions.
 ryu==4.34
 eventlet==0.30.2
-dnspython==2.2.1
+dnspython==1.16.0   # eventlet 0.30.2 requires <2.0.0,>=1.15.0; see scripts/setup_env.sh
 setuptools<60
+msgpack>=0.3.0
+netaddr
+oslo.config>=2.5.0
+ovs>=2.6.0
+routes
+six>=1.4.0
+tinyrpc
+webob>=1.2
 networkx
 numpy
 requests

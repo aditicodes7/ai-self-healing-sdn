@@ -31,6 +31,29 @@ executing the plan.
   disclosed to the user directly (not silently substituted) and is not a
   pure-simulation substitution — actual Mininet/OVS still runs, just inside
   a VM rather than bare metal.
+- 2026-08-30: Linux VM tooling for Phases 2+ is Multipass (`brew install
+  --cask multipass`), Ubuntu 22.04 LTS, 4GB RAM / 4 vCPU — scriptable
+  end-to-end (launch/mount/shell all via CLI), unlike UTM's GUI ISO install.
+- 2026-08-31: Multipass's default "classic" (SSHFS-based) live mount of the
+  project directory into the VM proved unreliable for this workflow: it
+  produced broken bin/python venv symlinks that not even `rm -rf` (with
+  sudo, from either side) could remove, and later the whole mount started
+  rejecting reads ("Operation not permitted") after a VM stop/start cycle.
+  The alternative "native" (virtiofs) mount type failed outright because
+  qemu couldn't get macOS TCC permission to read `~/Desktop` (a
+  privacy-protected folder) without a manual Full Disk Access grant.
+  Decision: stop relying on a live mount. `multipass transfer -r` pushes a
+  point-in-time snapshot of the repo into the VM's native filesystem
+  (`/home/ubuntu/ai-self-healing-sdn`) instead; re-run it after edits that
+  need to be tested VM-side. This is slower to iterate than a live mount
+  but has proven completely reliable, and the VM-side copy is disposable
+  (the Mac-side working tree with its `.git` history remains authoritative).
+- 2026-08-31: `venv-ctrl` lives at `$HOME/venv-ctrl-ai-self-healing-sdn`
+  inside the VM (outside the project directory) rather than at
+  `<repo>/venv-ctrl`, even now that the project directory is a native-VM
+  copy rather than a live mount — keeping venv location decoupled from
+  however the repo got onto the VM avoids re-hitting this class of problem
+  if a live mount is revisited later. See `scripts/setup_env.sh`.
 - 2026-08-30: Because Ryu's controller role only needs a TCP listener that
   OpenFlow-speaking switches can reach (it does not itself need to create
   network namespaces), venv-ctrl can potentially run on the macOS host while

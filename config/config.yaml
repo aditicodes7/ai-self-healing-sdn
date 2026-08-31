@@ -5,10 +5,10 @@
 
 project:
   name: ai-self-healing-sdn
-  # BACKEND is written here by the Phase 2 GO/NO-GO smoke test ("ryu" or "os-ken").
-  # Left null until that phase actually runs so this file never states an
-  # untested fact.
-  controller_backend: null
+  # Set by the Phase 2 GO/NO-GO smoke test (2026-08-31): ryu==4.34 imports
+  # and a real Mininet pingall passed 0% dropped, so no os-ken fallback
+  # was needed. See PROJECT_STATE.md and docs/decisions.md.
+  controller_backend: ryu
 
 controller:
   openflow_version: "1.3"
