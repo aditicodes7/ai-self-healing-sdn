@@ -28,8 +28,8 @@ Never re-ask anything recorded here.
 
 ## Current phase
 
-**Phase 6 — COMPLETE.** Shared feature pipeline, train/live equality test.
-Next: Phase 7 (failure injector, 6 fault types, scheduled).
+**Phase 7 — COMPLETE.** Failure injector, 6 fault types, scheduled.
+Next: Phase 8 (dataset generator).
 
 ## Completed components
 
@@ -183,10 +183,41 @@ Next: Phase 7 (failure injector, 6 fault types, scheduled).
   sb3-contrib, fastapi, uvicorn, joblib) — needed starting this phase,
   installed once now rather than piecemeal per future phase.
 
+**Phase 7 — failure injector:**
+- `network/failure_injector.py` — `FailureInjector` class applying real
+  Mininet/tc-level faults to a specific link (never a fabricated
+  telemetry value written directly to the DB): `congestion` (bw reduced
+  to a fraction of capacity), `gradual_degradation` (bw/delay ramped
+  linearly across N sub-steps), `packet_loss` (tc netem loss%),
+  `high_latency` (tc netem delay), `rising_errors` (tc netem corrupt%),
+  `link_failure` (`net.configLinkStatus` down/up). Every injection and
+  recovery writes a JSON-lines ground-truth record (event, link_id,
+  fault_type, timestamps, applied params) — this is what Phase 9's
+  dataset generator will use to label windows, never anything else.
+  Runs under system Python 3 (needs Mininet), same as topo_builder.py.
+- **Gate result — verified against real evidence for all 6 fault types**
+  (run in `sdn-vm`, ground truth JSONL inspected directly): `high_latency`
+  (Mininet confirms "(60ms delay)" applied), `packet_loss` 30% (mid-fault
+  ping showed 50% RTT loss, matching the compound round-trip math
+  1-(1-0.3)²≈51% almost exactly), `congestion` (iperf3 achieved only
+  1.13Mbps against a 1.5Mbit target cap from a 10Mbit link),
+  `link_failure` (100% ping loss during, 0% after recovery),
+  `gradual_degradation` (Mininet's own status line shows a clean 5-step
+  ramp: 8.2→6.4→4.6→2.8→1.0 Mbit, 10→20→30→40→50ms delay). All 6 fault
+  types plus recovery correctly logged in the ground-truth file.
+- **Found and honestly documented a real limitation** (not hidden):
+  `rising_errors`' corruption is genuinely applied (confirmed via a
+  massive real throughput drop during the fault window) but never
+  registers in OVS's `rx_errors`/`tx_errors` counters, because Mininet's
+  veth-based links don't perform the hardware-level FCS/CRC check a real
+  NIC does. Confirmed across the whole test run: `SUM(rx_errors)=0,
+  SUM(tx_errors)=0` (638 telemetry rows) vs. `packet_loss`'s effect,
+  which IS visible (`SUM(rx_dropped)=232`). Full detail and its
+  consequence for Phase 9's ML training in `docs/limitations.md`.
+
 ## Pending components
 
-Phase 7 onward: failure injector (6 fault types, scheduled), then dataset
-generation.
+Phase 8 onward: dataset generator (>=8 labelled runs), then ML training.
 
 ## Known issues
 
@@ -202,13 +233,16 @@ horizon 10s, verify settle 8s. `project.controller_backend: ryu`.
 
 ## Test status
 
-46/46 unit tests passing (`test_config.py`, `test_db.py`, `test_logging.py`,
-`test_of_compat.py`, `test_features.py`) under venv-ml (Python 3.11.9) on
-macOS, 96% coverage on `common/` + `database/`. Phases 2-5's Mininet/Ryu
-gates all passed with real measured results in `sdn-vm`, reproduced twice
+47/47 unit tests passing (`test_config.py`, `test_db.py`, `test_logging.py`,
+`test_of_compat.py`, `test_features.py`, `test_failure_injector.py`) under
+venv-ml (Python 3.11.9) on macOS. Phases 2-5's Mininet/Ryu gates all
+passed with real measured results in `sdn-vm`, reproduced twice
 independently for Phase 5. Phase 6's train/live feature-equality gate
 passed; `common/features.py` also verified importing and running
-correctly under the real venv-ctrl (Python 3.9, no pandas).
+correctly under the real venv-ctrl (Python 3.9, no pandas). Phase 7's
+6-fault-type injection gate passed with real ping/iperf3/telemetry
+evidence for every fault, including one honestly-documented limitation
+(rising_errors not visible via OVS error counters on veth links).
 
 ## Experiment status
 

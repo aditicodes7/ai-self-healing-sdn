@@ -68,5 +68,40 @@ weighting by echo-RTT jitter) is deferred; not required for the closed
 loop to function, since persistence/stability logic (Phase 12) operates
 on trends and thresholds, not absolute latency accuracy.
 
+## rising_errors fault: not observable via OVS rx_errors/tx_errors (Phase 7)
+
+`network/failure_injector.py`'s `rising_errors` fault applies a real
+`tc qdisc ... netem corrupt <pct>%` to the link's interfaces -- genuine
+bit-level corruption, not a fabricated value. Verified this is really
+applied: during a 6s, corrupt=8% fault on s1-s2 (2026-08-31), the
+switch-side port's `rx_bytes` counter grew only ~2.8KB over the whole
+window (828020 -> 830798) versus hundreds of KB/s normally under
+comparable traffic -- a real, large effect on delivered traffic.
+
+However, `telemetry.rx_errors`/`tx_errors` (from `OFPPortStatsRequest`)
+stayed at exactly 0 throughout, and across the entire test run (638
+telemetry rows, `SUM(rx_errors)=0`, `SUM(tx_errors)=0`). By contrast the
+`packet_loss` fault's effect IS visible this way (`SUM(rx_dropped)=232`
+over the same run). Root cause: Mininet's links are Linux `veth` pairs,
+which pass `sk_buff`s directly in kernel memory and do not perform the
+hardware-level FCS/CRC validation a real NIC does -- there is no physical
+frame-check step to fail, so nothing increments a hardware-style error
+counter the way it would on real hardware. This is a genuine property of
+software-emulated links, not a bug in the injector or the telemetry
+collector.
+
+**Consequence for later phases:** `error_rate` (derived in
+`common/features.py` from `rx_errors`/`tx_errors` deltas) will be ~0 for
+`rising_errors`-labeled windows in the Phase 8 dataset, same as for
+healthy windows. The ML model (Phase 9) will not be able to learn this
+fault type from `error_rate`; whatever signal exists will have to come
+indirectly, from the drop in `utilization`/throughput and any latency
+effect, exactly like a mild `packet_loss` or `congestion` case. This
+should be stated explicitly in the technical paper's dataset/feature
+discussion, and `rising_errors` classification accuracy (if reported
+separately per fault type) should be expected to be no better than what
+those indirect signals allow -- not artificially inflated by adding a
+fabricated error-count feature to compensate.
+
 Further entries (RL simulator calibration, queue-occupancy availability,
 etc.) are added as those phases are reached.
