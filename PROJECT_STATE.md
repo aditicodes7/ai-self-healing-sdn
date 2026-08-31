@@ -28,8 +28,8 @@ Never re-ask anything recorded here.
 
 ## Current phase
 
-**Phase 3 — COMPLETE.** Topology builder + iperf3 traffic generator.
-Next: Phase 4 (Ryu L2 forwarding + topology discovery).
+**Phase 4 — COMPLETE.** Ryu L2 forwarding + topology discovery.
+Next: Phase 5 (telemetry collector + DB writes + latency validation).
 
 ## Completed components
 
@@ -94,10 +94,36 @@ Next: Phase 4 (Ryu L2 forwarding + topology discovery).
   h1->h6: **9.27 Mbps throughput, 0 retransmits** (real measured
   `iperf3 -J` output).
 
+**Phase 4 — Ryu L2 forwarding + topology discovery:**
+- `controller/topology_manager.py` — Ryu app context (loaded via
+  `L2Forwarding._CONTEXTS`) that listens to `ryu.topology.event`
+  (requires `ryu-manager --observe-links`), maintains a `networkx.Graph`
+  of the live topology, recomputes a minimum spanning tree on every
+  change, and persists a `topology_snapshots` row (`source='discovered'`)
+  each time. Exposes `get_all_ports`/`is_inter_switch_port`/
+  `get_inter_switch_flood_ports` for loop-safe flooding.
+- `controller/main_app.py` (`L2Forwarding`) — standard MAC-learning L2
+  switch: table-miss flow, learns `src MAC -> (dpid, port)`, installs an
+  exact-match flow once a destination MAC is known, and floods only when
+  it's not. Flooding is restricted to host-facing ports plus
+  spanning-tree-safe inter-switch ports (via TopologyManager) so the
+  mesh topology's real L2 cycles don't storm — same underlying problem
+  Phase 3 hit with OVS standalone/RSTP, solved controller-side here since
+  the controller now decides forwarding.
+- **Gate result — both conditions met:**
+  - `sudo python3 network/topo_builder.py --topo scenario_a --fail-mode
+    secure --test pingall` (real controller, no OVS RSTP fallback) →
+    **0% dropped (30/30 received)**.
+  - Discovered topology snapshot (queried from `database/network.db`,
+    the fully-converged one, not the post-teardown empty one) has
+    **6 switches (dpid 1-6) and 8 links**, and every edge exactly matches
+    `network/topologies/scenario_a.yaml`'s link list (s1-s2, s1-s3,
+    s1-s4, s2-s3, s2-s5, s3-s6, s4-s5, s5-s6).
+
 ## Pending components
 
-Phase 4 onward: Ryu L2-forwarding + topology-discovery app, then telemetry
-collection.
+Phase 5 onward: telemetry collector + DB writes + latency validation
+against ping, then the shared feature pipeline.
 
 ## Known issues
 
@@ -113,11 +139,11 @@ horizon 10s, verify settle 8s. `project.controller_backend: ryu`.
 
 ## Test status
 
-30/30 unit tests passing (`tests/unit/test_config.py`, `test_db.py`,
+32/32 unit tests passing (`tests/unit/test_config.py`, `test_db.py`,
 `test_logging.py`, `test_of_compat.py`) under venv-ml (Python 3.11.9) on
-macOS, 97% coverage on `common/` + `database/`. Phase 2's GO/NO-GO smoke
-test and Phase 3's pingall/iperf3 gates both passed with real measured
-0% packet loss, run in `sdn-vm`.
+macOS, 97% coverage on `common/` + `database/`. Phases 2-4's Mininet/Ryu
+gates all passed with real measured 0% packet loss, run in `sdn-vm`;
+Phase 4's discovered-topology-matches-YAML check also passed exactly.
 
 ## Experiment status
 
