@@ -70,6 +70,17 @@ executing the plan.
   Python needed `python3-yaml` (apt) added for topology-spec parsing;
   `iperf3` (apt) provides the CLI the approved stack specifies for
   throughput measurement.
+- 2026-08-31: Ryu's `packet.Packet.serialize()` pads a bare Ethernet frame
+  with no upper-layer protocol up to the 60-byte minimum frame size before
+  returning `pkt.data`. Confirmed by debugging Phase 5's latency prober,
+  which appends a raw trailer (probe id + timestamp) after `pkt.data` --
+  reading that trailer back at a fixed offset after the 14-byte Ethernet
+  header landed inside the padding (always read as zero) instead. Fix:
+  any code appending a custom trailer to a Ryu-serialized frame must read
+  it back from the END of the received frame (`msg.data[-N:]`), never from
+  a fixed offset after the header. Applies anywhere else this pattern gets
+  reused (e.g. if RL-selected-path telemetry probing does something
+  similar later).
 - 2026-08-31: `venv-ctrl` lives at `$HOME/venv-ctrl-ai-self-healing-sdn`
   inside the VM (outside the project directory) rather than at
   `<repo>/venv-ctrl`, even now that the project directory is a native-VM

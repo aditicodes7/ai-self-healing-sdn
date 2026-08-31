@@ -9,7 +9,12 @@ Enforced by tests/unit/test_of_compat.py.
 try:
     from ryu.base import app_manager
     from ryu.controller import ofp_event
-    from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER, set_ev_cls
+    from ryu.controller.handler import (
+        CONFIG_DISPATCHER,
+        DEAD_DISPATCHER,
+        MAIN_DISPATCHER,
+        set_ev_cls,
+    )
     from ryu.ofproto import ofproto_v1_3
     from ryu.lib.packet import packet, ethernet, ether_types
     from ryu.lib import hub
@@ -19,7 +24,12 @@ try:
 except ImportError:
     from os_ken.base import app_manager
     from os_ken.controller import ofp_event
-    from os_ken.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER, set_ev_cls
+    from os_ken.controller.handler import (
+        CONFIG_DISPATCHER,
+        DEAD_DISPATCHER,
+        MAIN_DISPATCHER,
+        set_ev_cls,
+    )
     from os_ken.ofproto import ofproto_v1_3
     from os_ken.lib.packet import packet, ethernet, ether_types
     from os_ken.lib import hub
@@ -31,6 +41,7 @@ __all__ = [
     "app_manager",
     "ofp_event",
     "CONFIG_DISPATCHER",
+    "DEAD_DISPATCHER",
     "MAIN_DISPATCHER",
     "set_ev_cls",
     "ofproto_v1_3",

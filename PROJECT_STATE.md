@@ -28,8 +28,8 @@ Never re-ask anything recorded here.
 
 ## Current phase
 
-**Phase 4 — COMPLETE.** Ryu L2 forwarding + topology discovery.
-Next: Phase 5 (telemetry collector + DB writes + latency validation).
+**Phase 5 — COMPLETE.** Telemetry collector + DB writes + latency validation.
+Next: Phase 6 (shared feature pipeline, train/live equality test).
 
 ## Completed components
 
@@ -120,10 +120,43 @@ Next: Phase 5 (telemetry collector + DB writes + latency validation).
     `network/topologies/scenario_a.yaml`'s link list (s1-s2, s1-s3,
     s1-s4, s2-s3, s2-s5, s3-s6, s4-s5, s5-s6).
 
+**Phase 5 — telemetry collector + DB writes + latency validation:**
+- `controller/telemetry_collector.py` — polls `OFPPortStatsRequest` every
+  `telemetry.interval_s` for all connected switches, writes raw counters
+  to `telemetry` (data_source=emulated_mininet); computes per-port
+  byte-rate deltas, rejecting negative deltas from counter resets.
+  Independently measures `OFPEchoRequest` RTT per switch. Sends a
+  timestamped probe frame (EtherType `common.schema.PROBE_ETH_TYPE`) out
+  each discovered link, both directions, every interval; on the matching
+  PacketIn at the far end, estimates one-way latency as
+  `elapsed - 0.5*echo_rtt` and writes it to `features`
+  (`latency_is_estimate=1`, `window_s=0` — a raw sample, not yet a real
+  windowed feature; that's Phase 6). `controller/main_app.py` and
+  `of_compat.py` (added `DEAD_DISPATCHER`) updated accordingly.
+- **Two real bugs found and fixed during this phase** (see
+  `docs/decisions.md` 2026-08-31 for full detail): (1) `_probe_loop`
+  crashed permanently on its first tick (`networkx.Graph` has no `.get()`
+  method) with no visible symptom besides zero latency rows — fixed, and
+  all three background loops now share a `_run_forever` wrapper so one
+  bad iteration can't silently kill a loop again; (2) the probe's
+  timestamp trailer was being read from the wrong byte offset because
+  Ryu's `packet.Packet.serialize()` pads bare Ethernet frames to the
+  60-byte minimum — fixed by reading the trailer from the end of the
+  frame instead of a fixed offset.
+- **Gate result:** telemetry rows grew continuously (308 rows over a
+  ~20s run), deltas sane (byte counts match symmetrically between both
+  ends of the same link). Latency probe validated against real `ping`:
+  224 real probe rows written; **found and documented** (not hidden) that
+  the estimate runs ~15-20ms average vs. ~4-8ms real ping RTT, dominated
+  by controller-side eventlet scheduling overhead rather than physical
+  link delay — see `docs/limitations.md` for the full measured table and
+  its practical consequence (use relative changes, not absolute values,
+  in later phases).
+
 ## Pending components
 
-Phase 5 onward: telemetry collector + DB writes + latency validation
-against ping, then the shared feature pipeline.
+Phase 6 onward: shared feature pipeline (train/live equality test), then
+the failure injector.
 
 ## Known issues
 
@@ -139,11 +172,14 @@ horizon 10s, verify settle 8s. `project.controller_backend: ryu`.
 
 ## Test status
 
-32/32 unit tests passing (`tests/unit/test_config.py`, `test_db.py`,
+33/33 unit tests passing (`tests/unit/test_config.py`, `test_db.py`,
 `test_logging.py`, `test_of_compat.py`) under venv-ml (Python 3.11.9) on
-macOS, 97% coverage on `common/` + `database/`. Phases 2-4's Mininet/Ryu
-gates all passed with real measured 0% packet loss, run in `sdn-vm`;
-Phase 4's discovered-topology-matches-YAML check also passed exactly.
+macOS, 97% coverage on `common/` + `database/`. Phases 2-5's Mininet/Ryu
+gates all passed with real measured results in `sdn-vm`: 0% packet loss
+(Phases 2-4), discovered topology exactly matching the YAML (Phase 4),
+telemetry rows growing with sane deltas and latency probes validated
+against real ping (Phase 5, with the accuracy caveat in
+`docs/limitations.md`).
 
 ## Experiment status
 

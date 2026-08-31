@@ -6,13 +6,17 @@ entirely from Phase 11 onward; this phase only needs "hosts ping" and "the
 discovered graph matches the YAML".
 
 Run with (from repo root, so `controller.*` resolves):
-  $VENV_CTRL/bin/python3.9 -m ryu.cmd.manager --observe-links controller.main_app
+  $VENV_CTRL/bin/python3.9 -m ryu.cmd.manager --observe-links \
+      controller.main_app controller.telemetry_collector
 --observe-links is required: it's what makes ryu.topology emit the
-LLDP-based link-discovery events TopologyManager listens for.
+LLDP-based link-discovery events TopologyManager listens for. Both apps
+declare TopologyManager as a Ryu _CONTEXTS dependency, so ryu-manager
+instantiates one shared instance for both regardless of load order.
 """
 from __future__ import annotations
 
 from common.logging_setup import configure_logging
+from common.schema import PROBE_ETH_TYPE
 from controller.of_compat import (
     CONFIG_DISPATCHER,
     MAIN_DISPATCHER,
@@ -82,6 +86,11 @@ class L2Forwarding(app_manager.RyuApp):
         if eth.ethertype == ether_types.ETH_TYPE_LLDP:
             # Consumed by ryu.topology's own link-discovery app; never
             # learn from or forward LLDP.
+            return
+
+        if eth.ethertype == PROBE_ETH_TYPE:
+            # Consumed by telemetry_collector.py's latency prober; never
+            # learn from or forward these.
             return
 
         dst = eth.dst

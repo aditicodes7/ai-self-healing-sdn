@@ -52,3 +52,10 @@ class DataSource(str, enum.Enum):
 class FlowRuleResult(str, enum.Enum):
     INSTALLED = "INSTALLED"
     ERROR = "ERROR"
+
+
+# EtherType used by controller/telemetry_collector.py's latency probe
+# frames (0x9999 is in the unassigned/experimental range per IEEE 802;
+# never seen on real host traffic, so main_app.py's L2Forwarding can
+# reliably ignore these frames the same way it ignores LLDP).
+PROBE_ETH_TYPE = 0x9999
