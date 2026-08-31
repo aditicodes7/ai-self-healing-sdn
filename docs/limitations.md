@@ -20,23 +20,32 @@ surfaces a new one — this file is never emptied out to look cleaner.
 `controller/telemetry_collector.py`'s per-link latency probe is explicitly
 an ESTIMATE, not ground truth (see its module docstring for the mechanism).
 Phase 5 validated it against real `ping` measured independently by
-Mininet, on `network/topologies/scenario_a.yaml`:
+Mininet, on `network/topologies/scenario_a.yaml`. Reproduced twice from a
+clean controller restart + wiped DB (2026-08-31); the second run's fuller
+sample (n=28/link over the run, vs. n=8 in the first pass) is reported
+below:
 
-| link | configured one-way delay | probe estimate (avg of 8 samples) | independent ping RTT (h1<->h2 / h1<->h6) |
+| link | configured one-way delay | probe estimate: n, min/avg/max (ms) | independent ping RTT |
 |---|---|---|---|
-| s1-s2 | 2ms | ~21ms (10-40ms range) | 4.19-5.39ms (h1->h2, direct) |
-| s1-s3 | 1ms | ~21ms (10-39ms range) | -- |
-| s3-s6 | 2ms | ~18ms (13-27ms range) | 6.20-7.45ms (h1->h6, via s1-s3-s6) |
-| s2-s5 | 3ms | ~18ms (14-23ms range) | -- |
+| s1-s2 | 2ms | n=28, 8.7/29.1/64.6 | 4.18-5.02ms (h1->h2, direct; avg 4.42ms) |
+| s1-s3 | 1ms | n=28, 11.2/31.8/67.5 | -- |
+| s3-s6 | 2ms | n=28, 7.2/27.2/70.0 | 6.18-6.80ms (h1->h6, via s1-s3-s6; avg 6.34ms) |
+| s2-s5 | 3ms | n=28, 9.8/26.1/57.5 | -- |
 
-**Finding:** the probe estimate runs several times higher than the real
-link delay, AND is roughly the same magnitude (~15-20ms) across all four
-links regardless of their different configured propagation delays
-(1-3ms). This indicates the estimate is currently dominated by
-controller-side eventlet greenthread scheduling/queueing overhead (the
-probe loop, echo loop, telemetry poll loop, and OpenFlow event dispatch
-all share one cooperatively-scheduled reactor thread under Ryu), not by
-the physical link propagation delay the technique is meant to measure.
+(First run, n=8/link, for comparison: s1-s2 avg 21.1ms, s1-s3 avg
+21.1ms, s3-s6 avg 18.2ms, s2-s5 avg 17.6ms, against ping averages
+4.68ms/6.54ms — same pattern, smaller sample.)
+
+**Finding:** the probe estimate runs roughly 4-7x higher than the real
+ping RTT (not just one-way delay — RTT, an even more generous
+comparison), AND is roughly the same magnitude across all four links
+regardless of their different configured propagation delays (1-3ms),
+with wide run-to-run variance (min-max spans 55-63ms per link). This
+indicates the estimate is dominated by controller-side eventlet
+greenthread scheduling/queueing overhead (the probe loop, echo loop,
+telemetry poll loop, and OpenFlow event dispatch all share one
+cooperatively-scheduled reactor thread under Ryu), not by the physical
+link propagation delay the technique is meant to measure.
 
 **Why this is reported, not hidden or "fixed" by adjusting numbers:** the
 subtraction of half the OFPEchoRequest RTT (see telemetry_collector.py)
@@ -44,8 +53,9 @@ already accounts for one control-channel hop as designed; the residual
 overhead is real, reproducible measurement error inherent to a
 single-threaded green-thread control plane under concurrent load (LLDP,
 telemetry polling, echo, and probe traffic all contending for the same
-event loop), not a bug being papered over. Two runs (2026-08-31) produced
-consistent results.
+event loop), not a bug being papered over. Two independent runs
+(2026-08-31), the second from a fully clean restart at the user's
+request, produced consistent results.
 
 **Practical consequence for later phases:** absolute latency_ms values
 from this probe should not be treated as accurate wall-clock link delay.
