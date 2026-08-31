@@ -48,6 +48,28 @@ executing the plan.
   need to be tested VM-side. This is slower to iterate than a live mount
   but has proven completely reliable, and the VM-side copy is disposable
   (the Mac-side working tree with its `.git` history remains authoritative).
+- 2026-08-31: `network/topologies/scenario_a.yaml`'s partial mesh has real
+  L2 cycles by design (h1->h6 needs >=3 loop-free *routed* paths, which
+  requires redundant links to exist). Confirmed empirically that OVS
+  fail-mode='standalone' (used so topology sanity checks don't need an SDN
+  controller running) floods and storms on that topology: pingall was
+  100% dropped. Fix: `topo_builder.enable_rstp_and_wait()` enables RSTP
+  (`ovs-vsctl set Bridge <sw> rstp_enable=true`) on every switch and waits
+  15s for convergence whenever fail_mode='standalone', both in
+  topo_builder.py and traffic_generator.py. Not needed once a real SDN
+  controller runs in fail-mode='secure' (Phase 4 onward): there is no
+  flooding to loop when forwarding is exact-match flows chosen by the
+  controller instead of learning-switch broadcast.
+- 2026-08-31: `network/topo_builder.py`, `traffic_generator.py`, and
+  (later) `failure_injector.py` run under the VM's **system** Python 3.10,
+  not venv-ctrl or venv-ml. The apt `mininet` package installs into
+  `/usr/lib/python3/dist-packages` against system Python, and Mininet
+  itself needs root to create network namespaces — it is architecturally
+  separate from the Ryu controller process, which only talks to Mininet's
+  switches over the OpenFlow wire protocol, never via Python import. system
+  Python needed `python3-yaml` (apt) added for topology-spec parsing;
+  `iperf3` (apt) provides the CLI the approved stack specifies for
+  throughput measurement.
 - 2026-08-31: `venv-ctrl` lives at `$HOME/venv-ctrl-ai-self-healing-sdn`
   inside the VM (outside the project directory) rather than at
   `<repo>/venv-ctrl`, even now that the project directory is a native-VM

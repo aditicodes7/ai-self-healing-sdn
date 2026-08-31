@@ -1,0 +1,80 @@
+# Baseline 6-switch / 6-host partial-mesh topology.
+#
+# One host per switch (h1..h6 on s1..s6), so "hosts on s1, s3, s6 minimum"
+# is trivially satisfied. Inter-switch links form two 3-hop rings sharing
+# s1/s6 as endpoints, plus two cross-links (s1-s3, s2-s5), giving h1->h6
+# (i.e. s1->s6) at least 4 loop-free paths of differing cost (varied via
+# bandwidth/delay, not just hop count):
+#
+#   s1-s2-s3-s6   (10/10/10 Mbps, 2/2/2 ms)
+#   s1-s4-s5-s6   (10/10/10 Mbps, 5/5/5 ms)
+#   s1-s3-s6      (5/10 Mbps, 1/2 ms)          <- shortest hop count
+#   s1-s2-s5-s6   (10/8/10 Mbps, 2/3/5 ms)
+#
+# bw is in Mbit/s, delay in TCLink's "<n>ms" string format, loss in percent.
+name: scenario_a
+description: >
+  Baseline partial-mesh topology for pingall/traffic sanity checks and as
+  the default scenario for early-phase dataset generation.
+
+switches:
+  - id: s1
+  - id: s2
+  - id: s3
+  - id: s4
+  - id: s5
+  - id: s6
+
+hosts:
+  - id: h1
+    switch: s1
+    ip: 10.0.0.1/24
+  - id: h2
+    switch: s2
+    ip: 10.0.0.2/24
+  - id: h3
+    switch: s3
+    ip: 10.0.0.3/24
+  - id: h4
+    switch: s4
+    ip: 10.0.0.4/24
+  - id: h5
+    switch: s5
+    ip: 10.0.0.5/24
+  - id: h6
+    switch: s6
+    ip: 10.0.0.6/24
+
+links:
+  - endpoints: [s1, s2]
+    bw: 10
+    delay: 2ms
+    loss: 0
+  - endpoints: [s2, s3]
+    bw: 10
+    delay: 2ms
+    loss: 0
+  - endpoints: [s3, s6]
+    bw: 10
+    delay: 2ms
+    loss: 0
+  - endpoints: [s1, s4]
+    bw: 10
+    delay: 5ms
+    loss: 0
+  - endpoints: [s4, s5]
+    bw: 10
+    delay: 5ms
+    loss: 0
+  - endpoints: [s5, s6]
+    bw: 10
+    delay: 5ms
+    loss: 0
+  - endpoints: [s1, s3]
+    bw: 5
+    delay: 1ms
+    loss: 0
+  - endpoints: [s2, s5]
+    bw: 8
+    delay: 3ms
+    loss: 0

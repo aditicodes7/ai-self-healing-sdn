@@ -12,17 +12,28 @@ Never re-ask anything recorded here.
 - **Python already available on the dev machine:** `python3.11` at
   `/Library/Frameworks/Python.framework/Versions/3.11/bin/python3.11`
   (3.11.9) — used directly for `venv-ml`.
+- **Linux VM:** Multipass `sdn-vm`, Ubuntu 22.04.5 LTS, 4 vCPU / 4GB RAM
+  allocation (3.8GB usable), 20GB disk. Repo is delivered into it via
+  `multipass transfer -r` snapshots (NOT a live mount — both mount types
+  proved unreliable, see `docs/decisions.md` 2026-08-31); re-run after any
+  Mac-side edit that needs VM-side testing:
+  `multipass transfer -r <path> sdn-vm:/home/ubuntu/ai-self-healing-sdn/<path>`.
+- **venv-ctrl:** Python 3.9.25, lives at
+  `$HOME/venv-ctrl-ai-self-healing-sdn` inside the VM (outside the repo
+  directory — see decisions.md). Built by `scripts/setup_env.sh ctrl`.
+- **venv-ml:** Python 3.11.9, `<repo>/venv-ml` on macOS. Built by
+  `scripts/setup_env.sh ml`.
+- `project.controller_backend: ryu` in `config/config.yaml` (decided
+  Phase 2 GO/NO-GO smoke test — no os-ken fallback needed).
 
 ## Current phase
 
-**Phase 2 — COMPLETE.** Env setup, both venvs, GO/NO-GO smoke test, of_compat.
+**Phase 3 — COMPLETE.** Topology builder + iperf3 traffic generator.
+Next: Phase 4 (Ryu L2 forwarding + topology discovery).
 
 ## Completed components
 
-**Phase 1 (repo skeleton, config, logging, DB):**
-- Repository root initialized at `the project directory`
-  (git repo, no nested `ai-self-healing-sdn/` subdirectory — see
-  decisions.md).
+**Phase 1 — repo skeleton, config, logging, DB:**
 - `config/config.yaml` — full tunable set (telemetry, features, label, ml,
   persistence, stability, path, rl, flow, verify, remediation, traffic,
   database, api, seeds).
@@ -30,94 +41,83 @@ Never re-ask anything recorded here.
   `ConfigError` on missing/malformed sections, validates
   `uncertainty_band` ordering.
 - `common/logging_setup.py` — stdlib logging, one-JSON-object-per-line
-  formatter, `configure_logging(name)`, no duplicate handlers.
+  formatter, `configure_logging(name)`.
 - `common/schema.py` — shared enums (LinkHealthState, IncidentStatus,
   VerificationClassification, RouteSelector, DataSource, FlowRuleResult).
-- `database/schema.sql` — all 11 tables (telemetry, features, predictions,
-  links, topology_snapshots, incidents, route_changes, flow_rules,
-  remediation_events, verification_results, experiment_runs) + indexes on
-  (timestamp), (link_id, timestamp), (incident_id).
+- `database/schema.sql` — all 11 tables + indexes on (timestamp),
+  (link_id, timestamp), (incident_id).
 - `database/db.py` — WAL-mode sqlite3 connection helper, `init_schema()`,
   `Database` context manager with generic `insert`/`query`/`execute`.
-- `venv-ml` created on macOS with Python 3.11.9; `pyyaml`, `pytest`,
-  `pytest-cov` installed.
 - `pytest.ini`, `Makefile`, `requirements-ctrl.txt`, `requirements-ml.txt`,
   `.gitignore`, `README.md`, `LICENSE` (MIT), `docs/decisions.md`,
   `docs/limitations.md`.
 
-**Phase 2 (env setup, GO/NO-GO smoke test, of_compat):**
-- **Linux VM:** Multipass `sdn-vm`, Ubuntu 22.04.5 LTS, 4 vCPU / 4GB RAM
-  allocation (3.8GB usable), 20GB disk. Created via `multipass launch`.
-- **Repo delivery to the VM:** NOT a live mount. Multipass's classic
-  (SSHFS) mount corrupted venv symlinks and later started rejecting all
-  reads; the native (virtiofs) mount failed outright on macOS TCC
-  permissions for `~/Desktop`. Using `multipass transfer -r` to push
-  point-in-time snapshots into `/home/ubuntu/ai-self-healing-sdn` instead
-  — re-run after any edit that needs VM-side testing. Full reasoning in
+**Phase 2 — env setup, GO/NO-GO smoke test, of_compat:**
+- `scripts/setup_env.sh` — reproducible setup for both venvs (`ml`, `ctrl`,
+  `all` subcommands). `ctrl` works around a real Ryu 4.34 packaging bug
+  (pbr reports version 0.0.0 outside a git checkout) by building the wheel
+  manually with `PBR_VERSION=4.34` and a pinned `setuptools<60`; installs
+  `dnspython==1.16.0` (not 2.2.1 — conflicts with eventlet 0.30.2's own
+  `dnspython<2.0.0` requirement) plus ryu's full declared dependency set.
+  Verified reproducible from a clean run (ran twice independently).
+- `controller/of_compat.py` — the single ryu/os_ken import point;
+  `tests/unit/test_of_compat.py` (AST-based hygiene check) passes under
+  venv-ml with no ryu installed, and separately verified against the real
+  venv-ctrl (`of_compat backend: ryu`).
+- **GO/NO-GO smoke test: PASS, `ryu` backend.** `ryu-manager
+  ryu.app.simple_switch_13` + real Mininet pingall → 0% dropped
+  (6/6 received).
+- Mininet, Open vSwitch, iperf3, python3-yaml installed in the VM via apt.
+- `Makefile` `setup-ml`/`setup-ctrl` call `scripts/setup_env.sh`;
+  `test-ctrl` checks `of_compat` against the real ryu install (pytest is
+  not part of the approved venv-ctrl stack).
+
+**Phase 3 — topology builder + traffic generator:**
+- `network/topologies/scenario_a.yaml` — 6 switches, 6 hosts (one per
+  switch), partial mesh giving h1->h6 4 loop-free routed paths of
+  differing cost: s1-s2-s3-s6, s1-s4-s5-s6, s1-s3-s6, s1-s2-s5-s6
+  (bw 5-10 Mbit, delay 1-5ms per link).
+- `network/topo_builder.py` — generic YAML-driven Mininet builder
+  (`load_topology_spec`, `build_network`); new scenarios are data, not
+  code. `--fail-mode standalone` (default) enables RSTP and waits for
+  convergence so pingall works without an SDN controller running yet;
+  `--fail-mode secure` is for Phase 4 onward.
+- `network/traffic_generator.py` — `start_iperf_server`/`run_iperf_client`/
+  `summarize_result` library functions (reused by later dataset-generation
+  and experiment phases) plus a standalone CLI.
+- Found and fixed a real bug this phase: `scenario_a`'s redundant links
+  form L2 cycles by design, so OVS's learning-switch fallback storms
+  without RSTP (`topo_builder.enable_rstp_and_wait`) — see
   `docs/decisions.md` (2026-08-31).
-- **venv-ctrl:** Python 3.9.25 (deadsnakes PPA), lives at
-  `$HOME/venv-ctrl-ai-self-healing-sdn` inside the VM (outside the repo
-  directory, deliberately — see decisions.md). Built by
-  `scripts/setup_env.sh ctrl`, which works around a real Ryu 4.34 packaging
-  bug (pbr reports version 0.0.0 outside a git checkout, so a plain
-  `pip install ryu==4.34` fails both with and without build isolation) by
-  building the wheel manually with `PBR_VERSION=4.34` set and a pinned
-  `setuptools<60`. `dnspython` is pinned to `1.16.0`, not the originally
-  specified `2.2.1`, because `eventlet==0.30.2` itself declares
-  `dnspython<2.0.0,>=1.15.0` — installing 2.2.1 would conflict with
-  eventlet's own requirement, not just pip's resolver being strict.
-- **GO/NO-GO smoke test result: PASS with `ryu` backend** (no os-ken
-  fallback needed). `from ryu.base import app_manager` imports cleanly;
-  `ryu-manager ryu.app.simple_switch_13` plus
-  `sudo mn --controller=remote,ip=127.0.0.1,port=6653 --topo=single,3 --test pingall`
-  returned **0% dropped (6/6 received)**. Re-verified end-to-end from a
-  fully clean `scripts/setup_env.sh ctrl` run (second, independent run) —
-  same result, confirming reproducibility.
-- `config/config.yaml`: `project.controller_backend` now set to `ryu`
-  (was `null` pending this test).
-- `controller/of_compat.py` (the shim itself) and
-  `tests/unit/test_of_compat.py` (AST-based import-hygiene check, needs no
-  ryu/os_ken installed, runs under venv-ml) both pass. Additionally
-  verified under the real venv-ctrl: `of_compat backend: ryu`.
-- Mininet + Open vSwitch installed in the VM via apt
-  (`mininet`, `openvswitch-switch`).
-- `requirements-ctrl.txt` updated to reflect the actual working pin set
-  (dnspython 1.16.0, plus ryu's full declared runtime deps: msgpack,
-  netaddr, oslo.config, ovs, routes, six, tinyrpc, webob) and now documents
-  that `scripts/setup_env.sh ctrl` — not a plain `pip install -r` — is the
-  supported setup path.
-- `scripts/setup_env.sh` — reproducible, idempotent setup for both venvs;
-  `ml` and `ctrl` subcommands, `all` runs both.
-- `Makefile` targets `setup-ml`/`setup-ctrl` now call `scripts/setup_env.sh`;
-  `test-ctrl` checks `of_compat` resolves against the real ryu install
-  (pytest is not part of the approved venv-ctrl stack, so it isn't used
-  here).
+- **Gate result:** `sudo python3 network/topo_builder.py --topo scenario_a
+  --test pingall` → **0% dropped (30/30 received)**. iperf3 sanity check
+  h1->h6: **9.27 Mbps throughput, 0 retransmits** (real measured
+  `iperf3 -J` output).
 
 ## Pending components
 
-Phase 3 onward: topology builder + iperf3 traffic generator, then the Ryu
-L2-forwarding/topology-discovery app.
+Phase 4 onward: Ryu L2-forwarding + topology-discovery app, then telemetry
+collection.
 
 ## Known issues
 
-None blocking. Noted for awareness: VM-side testing requires an explicit
-`multipass transfer -r` re-sync after Mac-side edits (no live mount).
+None blocking. VM-side testing requires an explicit `multipass transfer -r`
+re-sync after Mac-side edits (no live mount — see Environment above).
 
 ## Configuration
 
 See `config/config.yaml` for the full set. Notable defaults: ML threshold
 0.75, uncertainty band [0.45, 0.60], persistence 3-of-4 windows, cooldown
 30s, route hold 60s, min improvement 15%, telemetry interval 2s, label
-horizon 10s, verify settle 8s. `project.controller_backend: ryu` (decided
-Phase 2).
+horizon 10s, verify settle 8s. `project.controller_backend: ryu`.
 
 ## Test status
 
-27/27 unit tests passing (`tests/unit/test_config.py`, `tests/unit/test_db.py`,
-`tests/unit/test_logging.py`, `tests/unit/test_of_compat.py`) under
-`venv-ml` (Python 3.11.9) on macOS, 97% coverage on `common/` + `database/`.
-Phase 2's GO/NO-GO smoke test (real Mininet + real Ryu, in `sdn-vm`) passed
-twice independently: 0% dropped (6/6 received) both times.
+30/30 unit tests passing (`tests/unit/test_config.py`, `test_db.py`,
+`test_logging.py`, `test_of_compat.py`) under venv-ml (Python 3.11.9) on
+macOS, 97% coverage on `common/` + `database/`. Phase 2's GO/NO-GO smoke
+test and Phase 3's pingall/iperf3 gates both passed with real measured
+0% packet loss, run in `sdn-vm`.
 
 ## Experiment status
 
