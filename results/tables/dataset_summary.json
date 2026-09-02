@@ -1,0 +1,102 @@
+{
+  "topo": "scenario_a",
+  "num_runs": 8,
+  "seeds": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8
+  ],
+  "target_run_duration_s": 600.0,
+  "total_windows": 39248,
+  "total_positive": 760,
+  "total_negative": 38488,
+  "positive_fraction": 0.01936404402772116,
+  "runs": [
+    {
+      "seed": 1,
+      "run_start_ts": 1788328957.3559973,
+      "run_end_ts": 1788329572.051494,
+      "duration_s": 614.6954965591431,
+      "num_fault_events": 9,
+      "windows_written": 4896,
+      "positive": 90,
+      "negative": 4806
+    },
+    {
+      "seed": 2,
+      "run_start_ts": 1788329576.788477,
+      "run_end_ts": 1788330221.0126097,
+      "duration_s": 644.2241327762604,
+      "num_fault_events": 9,
+      "windows_written": 5072,
+      "positive": 90,
+      "negative": 4982
+    },
+    {
+      "seed": 3,
+      "run_start_ts": 1788330226.0246286,
+      "run_end_ts": 1788330847.8081331,
+      "duration_s": 621.783504486084,
+      "num_fault_events": 9,
+      "windows_written": 4934,
+      "positive": 90,
+      "negative": 4844
+    },
+    {
+      "seed": 4,
+      "run_start_ts": 1788330852.4077356,
+      "run_end_ts": 1788331464.7632492,
+      "duration_s": 612.3555135726929,
+      "num_fault_events": 10,
+      "windows_written": 4880,
+      "positive": 100,
+      "negative": 4780
+    },
+    {
+      "seed": 5,
+      "run_start_ts": 1788331469.228264,
+      "run_end_ts": 1788332100.24929,
+      "duration_s": 631.0210258960724,
+      "num_fault_events": 9,
+      "windows_written": 4968,
+      "positive": 90,
+      "negative": 4878
+    },
+    {
+      "seed": 6,
+      "run_start_ts": 1788332104.8396556,
+      "run_end_ts": 1788332710.4385254,
+      "duration_s": 605.5988698005676,
+      "num_fault_events": 10,
+      "windows_written": 4768,
+      "positive": 100,
+      "negative": 4668
+    },
+    {
+      "seed": 7,
+      "run_start_ts": 1788332714.851742,
+      "run_end_ts": 1788333326.9712903,
+      "duration_s": 612.1195483207703,
+      "num_fault_events": 10,
+      "windows_written": 4834,
+      "positive": 100,
+      "negative": 4734
+    },
+    {
+      "seed": 8,
+      "run_start_ts": 1788333332.3309696,
+      "run_end_ts": 1788333946.9975429,
+      "duration_s": 614.6665732860565,
+      "num_fault_events": 10,
+      "windows_written": 4896,
+      "positive": 100,
+      "negative": 4796
+    }
+  ],
+  "data_source": "emulated_mininet"
+}

@@ -28,8 +28,8 @@ Never re-ask anything recorded here.
 
 ## Current phase
 
-**Phase 7 — COMPLETE.** Failure injector, 6 fault types, scheduled.
-Next: Phase 8 (dataset generator).
+**Phase 8 — COMPLETE.** Dataset generator (>=8 labelled runs, class balance
+reported). Next: Phase 9 (ML train + evaluate).
 
 ## Completed components
 
@@ -215,9 +215,49 @@ Next: Phase 8 (dataset generator).
   which IS visible (`SUM(rx_dropped)=232`). Full detail and its
   consequence for Phase 9's ML training in `docs/limitations.md`.
 
+**Phase 8 — dataset generator:**
+- `ml/dataset/label_rules.py` — `label_window()`: label=1 iff a link has
+  a `fault_start` ground-truth event with
+  `window_ts < start_ts <= window_ts + label.horizon_s` (10s default) —
+  pure stdlib, one canonical labeling rule.
+- `ml/dataset/generate_dataset.py` — orchestrates >=8 seeded 10-minute
+  Mininet runs: builds `scenario_a`, starts continuous background UDP
+  traffic (iperf3) between 3 host pairs, executes a randomized fault
+  schedule (`_build_fault_schedule`, alternating ~20-50s fault-free gaps
+  with all 6 `failure_injector.py` fault types), then post-processes that
+  run's raw `telemetry` rows through `common/features.py` (the SAME
+  function live inference will use, per Phase 6) and
+  `label_rules.label_window()`, writing labelled rows to
+  `results/raw/dataset/run_<seed>.jsonl`. Runs under system Python 3
+  (needs Mininet), same as the other `network/` scripts; assumes the
+  controller (`main_app` + `telemetry_collector`) is already running.
+- **Found and fixed a real bug during validation** (short test run
+  before committing to the full 8x600s generation): `link_capacities`
+  was declared but never populated, so every `utilization`-derived
+  feature was silently `None` for the whole dataset. Fixed by deriving
+  `bw`(Mbit)→bps from the topology spec before feature extraction;
+  re-validated with real non-None utilization values afterward.
+- **Gate result — real 8-run generation, ~90 minutes wall-clock**
+  (seeds 1-8, `scenario_a`, `--duration 600` each, actual per-run
+  duration 605-644s including fault overshoot): **39,248 total windows,
+  760 positive, 38,488 negative (positive_fraction ≈ 1.94%)**. Per-run:
+  9-10 fault events and 90-100 positive windows each (seed-dependent,
+  expected — not a bug). Full breakdown in
+  `results/tables/dataset_summary.json` (committed; the raw
+  `results/raw/dataset/run_*.jsonl` files, ~7-8MB each, live only in the
+  VM and are regenerated via `sudo python3 ml/dataset/generate_dataset.py
+  --duration 600`, per the existing `.gitignore` policy for
+  `results/raw/*`).
+- **Class imbalance is real and expected, not a flaw to fix by
+  resampling silently:** ~1.94% positive rate reflects that most of a
+  run is genuinely healthy traffic — Phase 9's ML training must account
+  for this (class weighting, and PR-AUC as a primary metric alongside
+  ROC-AUC per the original ML spec) rather than treating it as a bug.
+
 ## Pending components
 
-Phase 8 onward: dataset generator (>=8 labelled runs), then ML training.
+Phase 9 onward: ML train + evaluate (real metrics in
+results/tables/ml_metrics.json), then the inference service.
 
 ## Known issues
 
@@ -242,7 +282,9 @@ passed; `common/features.py` also verified importing and running
 correctly under the real venv-ctrl (Python 3.9, no pandas). Phase 7's
 6-fault-type injection gate passed with real ping/iperf3/telemetry
 evidence for every fault, including one honestly-documented limitation
-(rising_errors not visible via OVS error counters on veth links).
+(rising_errors not visible via OVS error counters on veth links). Phase
+8's dataset generation gate passed: 8 real seeded runs, 39,248 labelled
+windows, class balance reported (not fabricated).
 
 ## Experiment status
 
