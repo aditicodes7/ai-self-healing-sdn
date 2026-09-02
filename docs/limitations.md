@@ -68,7 +68,7 @@ weighting by echo-RTT jitter) is deferred; not required for the closed
 loop to function, since persistence/stability logic (Phase 12) operates
 on trends and thresholds, not absolute latency accuracy.
 
-## rising_errors fault: not observable via OVS rx_errors/tx_errors (Phase 7)
+## rising_errors AND packet_loss: not observable via OVS rx_errors/rx_dropped (Phase 7, corrected Phase 9)
 
 `network/failure_injector.py`'s `rising_errors` fault applies a real
 `tc qdisc ... netem corrupt <pct>%` to the link's interfaces -- genuine
@@ -80,28 +80,111 @@ comparable traffic -- a real, large effect on delivered traffic.
 
 However, `telemetry.rx_errors`/`tx_errors` (from `OFPPortStatsRequest`)
 stayed at exactly 0 throughout, and across the entire test run (638
-telemetry rows, `SUM(rx_errors)=0`, `SUM(tx_errors)=0`). By contrast the
-`packet_loss` fault's effect IS visible this way (`SUM(rx_dropped)=232`
-over the same run). Root cause: Mininet's links are Linux `veth` pairs,
-which pass `sk_buff`s directly in kernel memory and do not perform the
-hardware-level FCS/CRC validation a real NIC does -- there is no physical
-frame-check step to fail, so nothing increments a hardware-style error
-counter the way it would on real hardware. This is a genuine property of
-software-emulated links, not a bug in the injector or the telemetry
-collector.
+telemetry rows, `SUM(rx_errors)=0`, `SUM(tx_errors)=0`).
 
-**Consequence for later phases:** `error_rate` (derived in
-`common/features.py` from `rx_errors`/`tx_errors` deltas) will be ~0 for
-`rising_errors`-labeled windows in the Phase 8 dataset, same as for
-healthy windows. The ML model (Phase 9) will not be able to learn this
-fault type from `error_rate`; whatever signal exists will have to come
-indirectly, from the drop in `utilization`/throughput and any latency
-effect, exactly like a mild `packet_loss` or `congestion` case. This
+**Correction (2026-09-02):** the original version of this entry claimed
+`packet_loss`'s effect WAS visible via `rx_dropped` (`SUM(rx_dropped)=232`
+in that same Phase 7 run). That was a misreading: `rx_dropped` is a
+monotonically increasing cumulative OVS counter, and summing it across
+many polling snapshots double/triple-counts the same standing value --
+it does not mean 232 packets were actually dropped. Phase 9's ML training
+crashed outright on an entirely-zero-variance `loss_rate` column, which
+prompted a proper check: `MAX(rx_dropped) - MIN(rx_dropped)` per
+(switch_id, port_no) across the full 8-run, ~90-minute dataset-generation
+run is **0 for every single port** (54,572 telemetry rows checked).
+`rx_dropped` is set once near port startup (almost always to exactly 1)
+and never increments again, regardless of any `packet_loss` fault applied
+during the run.
+
+**Root cause (covers both `rising_errors` and `packet_loss`):** Mininet's
+links are Linux `veth` pairs, and `tc netem` (both `loss` and `corrupt`)
+is applied to the veth interface itself, which sits OUTSIDE OVS's own
+per-port accounting -- packets netem drops or corrupts on the wire never
+reach OVS's datapath at all, so OVS's `OFPPortStatsRequest` counters
+(which only reflect what OVS itself processed) never see them. This is a
+genuine property of software-emulated links, not a bug in the injector or
+the telemetry collector -- confirmed by the SAME real, physical effect
+being independently visible in other ways every time (ping RTT/loss,
+iperf3 throughput, `rx_bytes` deltas -- see Phase 7's verification and
+`utilization`, which IS a usable feature, below).
+
+**Consequence for later phases:** `error_rate` AND `loss_rate` (derived
+in `common/features.py` from `rx_errors`/`rx_dropped` deltas) are exactly
+0.0 for every row in the Phase 8 dataset -- confirmed zero-variance
+across all 39,248 windows, not just for fault-labeled ones. Phase 9's
+`ml/train_model.py` detects and explicitly excludes zero-variance
+features before training (reported in `results/tables/ml_metrics.json`'s
+`dropped_zero_variance_features`, not silently dropped). The model's
+only learnable signal for `packet_loss`/`rising_errors`/`congestion` has
+to come from `utilization` (which DOES respond -- confirmed: reduced
+`rx_bytes` deltas on the receiving side) and `latency_ms`. This
 should be stated explicitly in the technical paper's dataset/feature
 discussion, and `rising_errors` classification accuracy (if reported
 separately per fault type) should be expected to be no better than what
 those indirect signals allow -- not artificially inflated by adding a
 fabricated error-count feature to compensate.
+
+## ML lead-time prediction: near-chance performance, and why (Phase 9)
+
+`ml/train_model.py` trained all three approved candidates
+(HistGradientBoosting, RandomForest, LogisticRegression) on the real
+Phase 8 dataset (train seeds 1-6, test seeds 7-8, 22 zero-variance
+features excluded per the entry above). **Real, computed results, not
+fabricated or adjusted:**
+
+| model | ROC-AUC | PR-AUC | precision/recall/F1 @ threshold=0.75 |
+|---|---|---|---|
+| histgradientboosting | 0.524 | 0.0214 | 0.000 / 0.000 / 0.000 |
+| randomforest (chosen) | 0.558 | 0.0239 | 0.000 / 0.000 / 0.000 |
+| logisticregression_baseline | 0.368 | 0.0161 | 0.000 / 0.000 / 0.000 |
+
+(Test set: 9,730 rows, 200 positive, i.e. 2.06% -- PR-AUC's own no-skill
+baseline is ~0.021, so these PR-AUC values are barely above chance.
+ROC-AUC near 0.5, one model below it. At threshold=0.75, no model ever
+predicts positive for a true positive window: 0 true positives across
+all three, full confusion matrices in
+`results/tables/ml_metrics.json`.)
+
+**Root cause, investigated rather than accepted at face value:** the
+label (per docs/architecture.md and `ml/dataset/label_rules.py`) is 1
+only for windows in the `label.horizon_s` (10s) BEFORE a fault's onset --
+deliberately an anticipation/lead-time label, not a "currently degraded"
+label (a model that only detects an already-dead link was explicitly
+called out as not the point of this project). But
+`network/failure_injector.py`'s fault types are applied as instantaneous
+step functions -- `congestion`, `packet_loss`, `high_latency`,
+`rising_errors`, and `link_failure` all flip from fully healthy to fully
+faulted in one `tc`/OVS call, with no organic ramp-up before `start_ts`.
+Even `gradual_degradation`'s 5-step ramp happens AFTER `start_ts`, not
+before it. Telemetry polling (2s interval) is on an independent timer
+from fault scheduling, so the ~5 samples labeled positive before each
+fault are, by construction, statistically indistinguishable from any
+other healthy window -- there is nothing in the network that has changed
+yet. This is not a bug in feature computation, labeling, or model
+training (all independently verified working correctly elsewhere in this
+document); it is a property of the fault-injection methodology: **real
+link degradation often has organic precursors a model could learn to
+recognize; this synthetic step-function injection does not create any**.
+
+**Consequence, stated plainly for the technical paper:** this dataset and
+this training run do not demonstrate genuine lead-time prediction
+capability, because the experimental design as currently implemented
+gives the model no precursor signal to find, regardless of model choice
+or feature engineering quality. This is a limitation of the emulation
+methodology, not evidence the modeling approach doesn't work. Honest
+options going forward (not implemented here -- out of scope for closing
+the loop, which needs a working baseline more than a highly accurate
+one): (1) add a genuine pre-fault ramp period to more fault types,
+modeled after `gradual_degradation`'s existing step ramp, so real
+precursor signal exists to learn from; (2) reduce `label.horizon_s`
+toward 0 to evaluate detection (not anticipation) as a separate, easier,
+honestly-labeled task; (3) collect substantially more runs so rarer
+borderline cases (e.g. windows just as `gradual_degradation`'s ramp
+begins) contribute enough training examples to matter. None of these are
+implemented in Phase 9 -- doing so would change the dataset and require
+regenerating it (another ~90 minutes of Mininet runtime), which is
+recorded here as follow-up work rather than undertaken silently to
+produce a better-looking number.
 
 Further entries (RL simulator calibration, queue-occupancy availability,
 etc.) are added as those phases are reached.

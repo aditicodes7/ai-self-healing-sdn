@@ -70,6 +70,33 @@ executing the plan.
   Python needed `python3-yaml` (apt) added for topology-spec parsing;
   `iperf3` (apt) provides the CLI the approved stack specifies for
   throughput measurement.
+- 2026-09-02: Phase 9 ML training crashed on `HistGradientBoostingClassifier`
+  ("window shape cannot be larger than input array shape") because
+  `latency_ms` was 100% NaN across the whole Phase 8 dataset -- a real bug
+  in `ml/dataset/generate_dataset.py`: it never joined the probe-latency
+  samples telemetry_collector.py writes to `features`
+  (`latency_is_estimate=1`) into the `RawWindow` history it built purely
+  from `telemetry` counter rows (which has no `latency_ms` column at
+  all). Fixed with `_nearest_latency_ms()` (nearest-in-time join,
+  tolerance `2*telemetry.interval_s`, since the two are polled on
+  independent timers). Rather than re-running the full ~90-minute, 8-seed
+  Mininet generation, re-extracted all 8 runs directly from the VM's
+  still-intact `database/network.db` (the underlying telemetry was never
+  wrong, only the post-hoc extraction) -- verified byte-identical
+  windows/positive/negative counts to the original run, confirming the
+  fix only fills in previously-missing latency values and changes nothing
+  else.
+- 2026-09-02: `loss_rate`/`error_rate` are exactly 0.0 for every one of
+  39,248 dataset rows -- confirmed via `MAX(rx_dropped)-MIN(rx_dropped)`
+  per port across the whole dataset run being 0 everywhere. This
+  generalizes the 2026-08-31 `rising_errors` finding to `packet_loss` too
+  (both rely on OVS port counters that `tc netem` bypasses on veth
+  links), and corrects an earlier claim in `docs/limitations.md` that
+  `packet_loss` WAS visible via `rx_dropped` (that was a misreading of a
+  monotonically-increasing cumulative counter summed across many polls).
+  `ml/train_model.py` now detects and excludes zero-variance features
+  explicitly (reported, not silently dropped) rather than letting
+  `HistGradientBoostingClassifier` crash on them.
 - 2026-08-31: Ryu's `packet.Packet.serialize()` pads a bare Ethernet frame
   with no upper-layer protocol up to the 60-byte minimum frame size before
   returning `pkt.data`. Confirmed by debugging Phase 5's latency prober,

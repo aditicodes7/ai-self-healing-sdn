@@ -28,8 +28,9 @@ Never re-ask anything recorded here.
 
 ## Current phase
 
-**Phase 8 — COMPLETE.** Dataset generator (>=8 labelled runs, class balance
-reported). Next: Phase 9 (ML train + evaluate).
+**Phase 9 — COMPLETE.** ML train + evaluate (real metrics in
+results/tables/ml_metrics.json + figures). Next: Phase 10 (inference
+service + controller client + fallback).
 
 ## Completed components
 
@@ -254,10 +255,62 @@ reported). Next: Phase 9 (ML train + evaluate).
   for this (class weighting, and PR-AUC as a primary metric alongside
   ROC-AUC per the original ML spec) rather than treating it as a bug.
 
+**Phase 9 — ML train + evaluate:**
+- `ml/train_model.py` — loads the Phase 8 dataset SPLIT BY RUN (train
+  seeds 1-6, test seeds 7-8, fixed and documented, not re-randomized).
+  Trains all 3 approved candidates (HistGradientBoosting, RandomForest,
+  LogisticRegression baseline; no XGBoost) with `sample_weight='balanced'`
+  for the ~1.94% positive class; HistGradientBoosting uses NaN features
+  natively, RandomForest/LogisticRegression go through a
+  `SimpleImputer(median)` pipeline (documented, not a silent fillna(0)
+  inside `common/features.py`). Selects the best by PR-AUC (far more
+  informative than ROC-AUC under this much imbalance). Reports precision/
+  recall/F1/ROC-AUC/PR-AUC/confusion matrix at `config.ml.threshold`
+  (justified: matches the live decision logic's operating point, not
+  re-optimized after the fact), permutation feature importance (not
+  impurity) for the chosen model, and a calibration curve. Serializes to
+  `models/degradation_model.joblib` + `models/metadata.json` (sklearn
+  version, feature order, train/test seeds, git commit).
+  `ml/evaluate_model.py` independently reloads the saved model and
+  reproduces the same metrics (used to verify save/load reproducibility
+  — confirmed byte-identical numbers).
+- **Found and fixed a real bug before training could even run:**
+  `latency_ms` was 100% NaN across the whole dataset — `generate_dataset.py`
+  never joined the `features` table's probe-latency samples into the
+  telemetry-counter-derived `RawWindow` history it built. Fixed with a
+  nearest-in-time join (`_nearest_latency_ms`); re-extracted all 8 runs
+  directly from the VM's still-intact database (not a full 90-minute
+  Mininet re-run) — verified byte-identical window/label counts to the
+  original run, confirming the fix only fills in latency, changes
+  nothing else.
+- **Confirmed and corrected a real limitation:** `loss_rate`/`error_rate`
+  are exactly 0.0 for all 39,248 rows (OVS port counters don't reflect
+  `tc netem`-injected loss on veth links — same root cause as Phase 7's
+  `rising_errors` finding, now confirmed for `packet_loss` too; an
+  earlier Phase 7 claim that `packet_loss` WAS visible via `rx_dropped`
+  is corrected in `docs/limitations.md` — it was a misread of a
+  cumulative counter). `train_model.py` detects and excludes these 22
+  zero-variance features explicitly (reported in
+  `dropped_zero_variance_features`, not silently dropped or hidden).
+- **Gate result — real metrics, honestly reported, not fabricated or
+  adjusted to look better:** ROC-AUC 0.37-0.56, PR-AUC 0.016-0.024
+  (barely above the ~0.021 no-skill baseline for this class balance);
+  0 true positives at threshold=0.75 for all 3 models. **Investigated,
+  not just accepted:** root cause is that `failure_injector.py`'s faults
+  are instantaneous step functions with no organic pre-fault ramp, so
+  the label's anticipation window (before `start_ts`) is statistically
+  indistinguishable from any healthy window — a genuine limitation of
+  the fault-injection methodology (not a labeling/feature/training bug,
+  all independently verified correct elsewhere), fully documented with
+  concrete honest options for future work in `docs/limitations.md`.
+  Real figures (ROC/PR/confusion-matrix/calibration/feature-importance)
+  saved to `results/figures/ml_*.png`, visibly showing this near-chance
+  performance rather than a misleadingly strong result.
+
 ## Pending components
 
-Phase 9 onward: ML train + evaluate (real metrics in
-results/tables/ml_metrics.json), then the inference service.
+Phase 10 onward: inference service + controller client + fallback, then
+path computation.
 
 ## Known issues
 
@@ -284,7 +337,11 @@ correctly under the real venv-ctrl (Python 3.9, no pandas). Phase 7's
 evidence for every fault, including one honestly-documented limitation
 (rising_errors not visible via OVS error counters on veth links). Phase
 8's dataset generation gate passed: 8 real seeded runs, 39,248 labelled
-windows, class balance reported (not fabricated).
+windows, class balance reported (not fabricated). Phase 9's ML gate
+passed: real metrics (ROC-AUC 0.37-0.56, PR-AUC 0.016-0.024, honestly
+weak and fully explained, not adjusted) in results/tables/ml_metrics.json
++ 5 figures in results/figures/; model save/load reproducibility
+independently verified via ml/evaluate_model.py.
 
 ## Experiment status
 

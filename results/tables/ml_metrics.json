@@ -1,0 +1,197 @@
+{
+  "chosen_model": "randomforest",
+  "threshold": 0.75,
+  "threshold_justification": "Fixed at config.ml.threshold, the same value the live persistence/stability decision logic (Phase 12) uses -- so reported precision/recall reflect exactly the operating point the closed loop runs at, not a metric re-optimized after the fact. This value sits outside persistence.uncertainty_band, avoiding the abstention band by construction (see tests/unit/test_config.py::test_ml_threshold_within_bounds).",
+  "train_seeds": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "test_seeds": [
+    7,
+    8
+  ],
+  "split_method": "by_run_not_by_row",
+  "dropped_zero_variance_features": [
+    "loss_rate_mean_3",
+    "loss_rate_std_3",
+    "loss_rate_slope_3",
+    "loss_rate_mean_5",
+    "loss_rate_std_5",
+    "loss_rate_slope_5",
+    "loss_rate_mean_10",
+    "loss_rate_std_10",
+    "loss_rate_slope_10",
+    "loss_rate_diff_1",
+    "loss_rate_ewma_dev",
+    "error_rate_mean_3",
+    "error_rate_std_3",
+    "error_rate_slope_3",
+    "error_rate_mean_5",
+    "error_rate_std_5",
+    "error_rate_slope_5",
+    "error_rate_mean_10",
+    "error_rate_std_10",
+    "error_rate_slope_10",
+    "error_rate_diff_1",
+    "error_rate_ewma_dev"
+  ],
+  "dropped_features_reason": "loss_rate/error_rate-derived features are exactly 0.0 for every row: OVS's rx_dropped/rx_errors port counters never reflect tc-netem-injected loss/corruption on Mininet's veth-based links, confirmed empirically. See docs/limitations.md.",
+  "models": {
+    "histgradientboosting": {
+      "threshold": 0.75,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "roc_auc": 0.5239979013641134,
+      "pr_auc": 0.02138640467343614,
+      "confusion_matrix": [
+        [
+          9504,
+          26
+        ],
+        [
+          200,
+          0
+        ]
+      ],
+      "confusion_matrix_labels": [
+        "negative(0)",
+        "positive(1)"
+      ],
+      "n_test_samples": 9730,
+      "n_test_positive": 200,
+      "train_time_s": 2.105910062789917
+    },
+    "randomforest": {
+      "threshold": 0.75,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "roc_auc": 0.5579727177334732,
+      "pr_auc": 0.023898078843348932,
+      "confusion_matrix": [
+        [
+          9530,
+          0
+        ],
+        [
+          200,
+          0
+        ]
+      ],
+      "confusion_matrix_labels": [
+        "negative(0)",
+        "positive(1)"
+      ],
+      "n_test_samples": 9730,
+      "n_test_positive": 200,
+      "train_time_s": 3.65059494972229
+    },
+    "logisticregression_baseline": {
+      "threshold": 0.75,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "roc_auc": 0.36832214060860446,
+      "pr_auc": 0.01613235524228949,
+      "confusion_matrix": [
+        [
+          9513,
+          17
+        ],
+        [
+          200,
+          0
+        ]
+      ],
+      "confusion_matrix_labels": [
+        "negative(0)",
+        "positive(1)"
+      ],
+      "n_test_samples": 9730,
+      "n_test_positive": 200,
+      "train_time_s": 0.17430496215820312
+    }
+  },
+  "permutation_importance": {
+    "feature_names": [
+      "utilization_mean_3",
+      "utilization_std_3",
+      "utilization_slope_3",
+      "utilization_mean_5",
+      "utilization_std_5",
+      "utilization_slope_5",
+      "utilization_mean_10",
+      "utilization_std_10",
+      "utilization_slope_10",
+      "utilization_diff_1",
+      "utilization_ewma_dev",
+      "latency_ms_mean_3",
+      "latency_ms_std_3",
+      "latency_ms_slope_3",
+      "latency_ms_mean_5",
+      "latency_ms_std_5",
+      "latency_ms_slope_5",
+      "latency_ms_mean_10",
+      "latency_ms_std_10",
+      "latency_ms_slope_10",
+      "latency_ms_diff_1",
+      "latency_ms_ewma_dev",
+      "packet_rate"
+    ],
+    "importances_mean": [
+      0.00018565166334987387,
+      -0.0002050967378939783,
+      -5.1933583498081984e-05,
+      0.00011114997396928054,
+      0.0010533619277381047,
+      0.00011776271105538998,
+      0.0002446682662183248,
+      -0.00044661551350480485,
+      -1.3224984309661777e-05,
+      -0.0003288552060805132,
+      7.258502805548988e-05,
+      -0.0006921055526810691,
+      0.0008812718431869298,
+      -7.73518173369226e-05,
+      -0.00023717381593153265,
+      0.0013046734858560432,
+      -0.0005041038167172465,
+      0.0014914584775140589,
+      0.0011749473635712445,
+      -0.0003188337021818588,
+      -5.9155402321392494e-05,
+      -0.0008159609374164243,
+      -0.0031536428376305143
+    ],
+    "importances_std": [
+      0.0003595948534480999,
+      0.00016522962726205575,
+      0.000201888176652263,
+      0.00029285644040979357,
+      0.00032939699031856216,
+      0.00021378158831476604,
+      0.0003518667579442541,
+      0.000516397910063651,
+      0.00028654437433528885,
+      0.0002108000734435268,
+      0.0002751206944672732,
+      0.0005379575166440588,
+      0.00032741811353241394,
+      0.00039230455013688196,
+      0.0008017821419938349,
+      0.0005641668129884805,
+      0.0006238426023918898,
+      0.0007362450718934098,
+      0.0005093681739389812,
+      0.0007129176005278916,
+      0.0004508887931048356,
+      0.0007046988184121674,
+      0.0012552944888926756
+    ]
+  }
+}

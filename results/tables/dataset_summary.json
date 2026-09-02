@@ -98,5 +98,6 @@
       "negative": 4796
     }
   ],
-  "data_source": "emulated_mininet"
+  "data_source": "emulated_mininet",
+  "note": "Re-extracted 2026-09-02 with the latency_ms merge fix (see docs/decisions.md); underlying Mininet telemetry unchanged, same 8 runs."
 }

@@ -26,6 +26,7 @@ only builds the data-plane network and orchestrates traffic/faults.
 from __future__ import annotations
 
 import argparse
+import bisect
 import json
 import random
 import sqlite3
@@ -178,6 +179,25 @@ def _run_one_scenario(
     }
 
 
+def _nearest_latency_ms(
+    latency_timestamps: list[float], latency_values: list[float], target_ts: float, tolerance_s: float,
+) -> float | None:
+    """Nearest latency probe sample to target_ts, or None if none exists
+    within tolerance_s (latency probes and port-stat polls run on
+    independent timers -- see telemetry_collector.py -- so they are never
+    exactly aligned)."""
+    if not latency_timestamps:
+        return None
+    idx = bisect.bisect_left(latency_timestamps, target_ts)
+    candidates = [i for i in (idx - 1, idx) if 0 <= i < len(latency_timestamps)]
+    if not candidates:
+        return None
+    best = min(candidates, key=lambda i: abs(latency_timestamps[i] - target_ts))
+    if abs(latency_timestamps[best] - target_ts) > tolerance_s:
+        return None
+    return latency_values[best]
+
+
 def _extract_labelled_windows(
     db_path: Path, links: list[tuple[str, str]], run_start_ts: float, run_end_ts: float,
     fault_events: list[dict], config, seed: int, output_dir: Path,
@@ -200,6 +220,22 @@ def _extract_labelled_windows(
                 (link_id, run_start_ts, run_end_ts),
             ).fetchall()
 
+            # telemetry_collector.py writes latency probe samples to
+            # `features` (latency_is_estimate=1), NOT `telemetry` --
+            # merge the nearest-in-time sample for this link into each
+            # RawWindow below. Without this, RawWindow.latency_ms is
+            # always None (a real bug caught during Phase 9 training:
+            # HistGradientBoostingClassifier failed outright on an
+            # entirely-NaN column).
+            latency_rows = conn.execute(
+                "SELECT timestamp, latency_ms FROM features "
+                "WHERE link_id = ? AND latency_is_estimate = 1 "
+                "AND timestamp BETWEEN ? AND ? ORDER BY timestamp ASC",
+                (link_id, run_start_ts, run_end_ts),
+            ).fetchall()
+            latency_timestamps = [r["timestamp"] for r in latency_rows]
+            latency_values = [r["latency_ms"] for r in latency_rows]
+
             # Base metrics are derived per (switch_id, port) time series
             # (one side of the link at a time), matching how
             # telemetry_collector.py polls each switch independently.
@@ -213,7 +249,12 @@ def _extract_labelled_windows(
                     prev, curr = switch_rows[i - 1], switch_rows[i]
                     dt_s = curr["timestamp"] - prev["timestamp"]
                     capacity_bps = link_capacities.get(link_id)
-                    base = compute_base_metrics(dict(prev), dict(curr), dt_s, capacity_bps)
+                    curr_dict = dict(curr)
+                    curr_dict["latency_ms"] = _nearest_latency_ms(
+                        latency_timestamps, latency_values, curr["timestamp"],
+                        tolerance_s=config.telemetry.interval_s * 2,
+                    )
+                    base = compute_base_metrics(dict(prev), curr_dict, dt_s, capacity_bps)
                     if base is None:
                         continue
                     history.append(base)
