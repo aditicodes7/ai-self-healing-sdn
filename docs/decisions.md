@@ -179,6 +179,28 @@ executing the plan.
   copy rather than a live mount — keeping venv location decoupled from
   however the repo got onto the VM avoids re-hitting this class of problem
   if a live mount is revisited later. See `scripts/setup_env.sh`.
+- 2026-09-03: Phase 17 RL env (rl/env/network_env.py) does not call the
+  real trained ML classifier (service/ml_rl_service.py) inside simulated
+  training steps to produce the state's degradation-probability feature.
+  That model was trained on real Mininet telemetry feature distributions
+  (Phase 9); feeding it NetworkSimulator's approximated per-step metrics
+  would introduce an unvalidated distributional mismatch outside
+  anything Phase 16's calibration covered. Used a documented deterministic
+  proxy instead (`_proxy_degradation_prob`: weighted function of
+  utilization/loss/fault-active, clipped to [0,1]) -- moves the same
+  direction a real predictor would, never claimed to BE calibrated. See
+  docs/limitations.md.
+- 2026-09-03: NetworkSimulator reports `latency_ms = inf` for a link with
+  `fault_down=True` (link_aggregate_metrics's own documented behavior --
+  correct as "queueing delay undefined"). Confirmed via the MaskablePPO
+  smoke test that this inf reaches the policy's observation/reward
+  unchanged and produces NaN action logits, crashing training outright.
+  Fixed by clipping latency_ms to a finite sentinel (10,000 ms) at the RL
+  env boundary only (rl/env/network_env.py's `_link_metrics_from_step`
+  and `_clip_flow_latency`) -- the simulator itself keeps reporting real
+  inf, unmodified; only the RL env's observation/reward construction
+  clips it, since a neural net input must be finite but nothing else
+  downstream needs that constraint.
 - 2026-08-30: Because Ryu's controller role only needs a TCP listener that
   OpenFlow-speaking switches can reach (it does not itself need to create
   network namespaces), venv-ctrl can potentially run on the macOS host while

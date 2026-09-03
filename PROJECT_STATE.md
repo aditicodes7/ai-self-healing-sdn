@@ -33,9 +33,9 @@ Never re-ask anything recorded here.
 
 ## Current phase
 
-**Phase 16 — COMPLETE.** RL env + simulator + calibration
-(simulator_calibration.json produced). Next: Phase 17 (RL training +
-evaluation).
+**Phase 17 — COMPLETE.** RL training + evaluation (real measured
+results, learned policy beats all 3 baselines). Next: Phase 18 (RL
+integration into the controller).
 
 ## Completed components
 
@@ -546,10 +546,82 @@ evaluation).
   conservative congestion-averse training bias, not a dangerous one) in
   `docs/limitations.md`.
 
+**Phase 17 — RL training + evaluation:**
+- `rl/env/rewards.py` — `RewardWeights`/`RewardComponents` (with a
+  `.total` property) + `compute_reward()`, the 8 weighted terms from
+  `config.yaml`'s `rl.reward_weights`, all computed from real
+  before/after `NetworkSimulator` deltas, never fabricated. Unit
+  -normalization scales (`throughput_scale_bps`, `latency_scale_ms`)
+  documented so raw unit magnitude can't silently dominate the
+  configured weights.
+- `rl/env/state.py` — fixed-size observation vector (47 dims for
+  scenario_a: 12 src/dst one-hot + 4×8 per-candidate features +
+  2 global-utilization summary + 1 time-since-reroute), zero-padded when
+  fewer than K candidates exist. Built directly on
+  `controller/path_computer.py`'s `LinkMetrics`/`link_id_for_edge` so
+  link identity matches the heuristic path-cost function's convention.
+- `rl/env/actions.py` — `Discrete(K+1)` (0=hold, 1..K=candidate i) with
+  `get_action_mask()` for `sb3-contrib`'s MaskablePPO convention.
+- `rl/env/network_env.py` — the `gymnasium.Env` (`SDNRoutingEnv`) tying
+  simulator+state+actions+rewards together. One fixed h1->h6 (dpid 1->6)
+  demand per episode; a seeded-random fault (matching
+  `failure_injector.py`'s 6 real fault types) injected on a
+  seeded-random link that's guaranteed to lie on the current path.
+  **Two real bugs found and fixed via the first MaskablePPO smoke run,
+  not assumed away:** (1) a `link_failure` fault makes
+  `NetworkSimulator` report `latency_ms=inf`, which reached the policy's
+  observation/reward unclipped and produced NaN action logits, crashing
+  training outright — fixed by clipping latency to a finite sentinel
+  (10,000ms) at the RL env boundary only, confirmed via a dedicated
+  regression test (`test_link_failure_fault_never_produces_inf_or_nan`).
+  (2) The state's "predicted degradation probability" feature does NOT
+  call the real trained ML classifier inside simulated steps (would
+  mix two unvalidated approximations — see docs/decisions.md and
+  docs/limitations.md); uses a documented deterministic proxy instead.
+- `rl/train_rl.py` — loads `config/config.yaml`, trains MaskablePPO for
+  `config.rl.train_steps` (300,000) timesteps, saves
+  `models/routing_policy.zip`, and writes both
+  `results/tables/rl_training_summary.json` and
+  `results/figures/rl_learning_curve.png` from stable_baselines3's own
+  Monitor episode log — no estimated numbers.
+- **Real training run executed:** 300,000 timesteps / 5,000 episodes in
+  189.7s (~1580 fps on this Mac). Mean episode reward rose from
+  wide-variance early exploration (episodes 0-500, several -1000/+1000
+  swings) to a stable plateau around ~50-56 from episode ~500 onward
+  through episode 5,000 (explained_variance 0.85-0.89 by the end).
+- `rl/evaluate_rl.py` — evaluates the trained policy against 3 baselines
+  (`random_valid`, `always_shortest_path`, `always_least_utilized`) over
+  `config.rl.eval_episodes` (50) seeded held-out episodes, reporting
+  mean reward, recovery success rate, mean post-reroute max utilization,
+  and reroute count, each with a 95% CI computed from the actual
+  episodes (`results/tables/rl_evaluation.json`).
+- **Real evaluation result (50 seeded episodes, base_seed=100):**
+
+  | policy | mean reward (95% CI) | recovery rate | mean reroutes/episode |
+  |---|---|---|---|
+  | learned (trained policy) | 51.28 ± 3.59 | **1.00** | 1.06 |
+  | random_valid | -39.14 ± 72.56 | 0.68 | 35.78 |
+  | always_shortest_path | -49.08 ± 1.43 | 0.00 | 0.00 |
+  | always_least_utilized | -271.38 ± 97.11 | 0.00 | 60.00 |
+
+  The learned policy recovers from every injected fault (100/100) while
+  rerouting on average about once per episode — i.e. it reroutes once,
+  correctly, and holds, rather than oscillating. Both non-learned
+  reactive/static baselines never recover in this evaluation:
+  `always_shortest_path` never reroutes at all by construction;
+  `always_least_utilized`'s per-step no-memory greedy choice thrashes
+  every single step (60/60) without ever settling onto a fault-avoiding
+  path by episode end.
+- 9 new `network_env.py` tests, 6 new `rewards.py` tests, 10 new
+  `actions.py`/`state.py` tests, 6 new `evaluate_rl.py` tests — all
+  green (187/187 total, see Test status).
+
 ## Pending components
 
-Phase 17 onward: RL training (200k-500k steps) + evaluation, then RL
-integration into the controller.
+Phase 18 onward: RL integration into the controller (live reroute
+chosen by the policy, logged; safety gate falls back to the weighted
+-cost heuristic on service-down/invalid-index/timeout, logging
+`rl_fallback=true`).
 
 ## Known issues
 
@@ -565,11 +637,12 @@ horizon 10s, verify settle 8s. `project.controller_backend: ryu`.
 
 ## Test status
 
-143/143 unit tests passing (`test_config.py`, `test_db.py`, `test_logging.py`,
+187/187 unit tests passing (`test_config.py`, `test_db.py`, `test_logging.py`,
 `test_of_compat.py`, `test_features.py`, `test_failure_injector.py`,
 `test_ml_rl_service.py`, `test_path_computer.py`, `test_persistence_tracker.py`,
 `test_stability_manager.py`, `test_flow_manager.py`, `test_remediation_manager.py`,
-`test_baselines.py`, `test_simulator.py`,
+`test_baselines.py`, `test_simulator.py`, `test_rewards.py`, `test_actions.py`,
+`test_state.py`, `test_network_env.py`, `test_evaluate_rl.py`,
 `test_verifier.py`, `test_baselines.py`) under
 venv-ml (Python 3.11.9) on macOS. Phases 2-5's Mininet/Ryu gates all
 passed with real measured results in `sdn-vm`, reproduced twice
@@ -591,7 +664,12 @@ save/load reproducibility independently verified via
 ml/evaluate_model.py. Phase 10's live-inference gate passed: 320 real
 predictions logged with the service running, 112 graceful fallback
 warnings and zero fabricated predictions with it killed mid-run, zero
-crashes either way.
+crashes either way. Phase 17's RL gate passed: a real 300,000-timestep
+MaskablePPO training run (189.7s wall clock) converged to a stable
+episode-reward plateau, and a real 50-episode seeded evaluation showed
+the learned policy at 100% recovery success vs 0% for both
+`always_shortest_path` and `always_least_utilized` baselines — see
+results/tables/rl_training_summary.json and rl_evaluation.json.
 
 ## Experiment status
 

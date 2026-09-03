@@ -1,0 +1,25 @@
+{
+  "algorithm": "MaskablePPO",
+  "total_timesteps": 300000,
+  "seed": 42,
+  "num_episodes": 5000,
+  "wall_clock_s": 189.6877679824829,
+  "mean_episode_reward_all": 51.06860599160001,
+  "mean_episode_reward_last_20": 51.660000000000004,
+  "reward_weights": {
+    "w1_throughput": 1.0,
+    "w2_latency": 1.0,
+    "w3_loss": 1.0,
+    "w4_recovery_success": 2.0,
+    "w5_max_utilization_after": 1.0,
+    "w6_reroute_cost": 0.5,
+    "w7_oscillation_penalty": 1.5,
+    "w8_failed_remediation": 2.0
+  },
+  "k_shortest": 4,
+  "git_commit": "06fb450f465639f8cf0d84bdf335ffc1d6e952a9",
+  "trained_at": 1788436958.161819,
+  "policy_path": "models/routing_policy.zip",
+  "monitor_csv": "results/raw/rl_training/rl_train.monitor.csv",
+  "data_source": "synthetic_simulator"
+}

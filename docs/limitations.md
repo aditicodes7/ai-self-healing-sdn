@@ -302,5 +302,36 @@ This should be stated explicitly in the technical paper's RL methodology
 section, exactly where the sim-to-real gap is normally addressed in the
 RL literature.
 
+## Phase 17: RL state's degradation-probability feature is a proxy, not the real classifier
+
+The RL training environment (rl/env/network_env.py) includes a
+"max predicted degradation probability" feature per candidate path in
+its state vector, matching the live controller's design (Phase 10's
+InferenceClient feeds the same kind of signal into real remediation
+decisions). During RL training, however, this value is NOT produced by
+calling the actual trained ML classifier (service/ml_rl_service.py,
+Phase 9). That model was trained on real Mininet-derived telemetry
+feature distributions (45 features over rolling windows of real
+utilization/loss/latency/error-rate samples). NetworkSimulator's
+per-step outputs are a fast M/M/1-style approximation, not that same
+distribution, and Phase 16's calibration effort covered throughput/
+latency accuracy only -- it never validated that the trained classifier
+would produce meaningful probabilities on simulator-shaped inputs.
+Calling it anyway would silently combine two unvalidated approximations.
+
+Instead, `_proxy_degradation_prob()` computes a deterministic function
+directly from the simulator's own ground-truth state for that step:
+`0.5*utilization + 0.3*loss_rate + 0.2*(1 if any fault active else 0)`,
+clipped to [0, 1]. This is honestly a heuristic stand-in: it moves in
+the same direction a real predictor's output would (higher under real
+stress, near-zero when healthy) and gives the policy a consistent
+training signal to condition on, but it is not a claim that these
+values are calibrated probabilities, and the trained RL policy's
+learned sensitivity to this feature should not be presented as evidence
+about the real ML classifier's behavior. This is a second, independent
+sim-to-real gap on top of the queueing-delay one documented above, and
+should be stated in the technical paper's RL methodology section
+alongside it.
+
 Further entries (queue-occupancy availability, etc.) are added as those
 phases are reached.

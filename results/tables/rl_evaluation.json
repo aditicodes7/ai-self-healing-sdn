@@ -1,0 +1,93 @@
+{
+  "n_episodes": 50,
+  "base_seed": 100,
+  "policy_path": "models/routing_policy.zip",
+  "k_shortest": 4,
+  "data_source": "synthetic_simulator",
+  "evaluated_at": 1788436980.754231,
+  "results": {
+    "learned": {
+      "episode_reward": {
+        "mean": 51.28400000000001,
+        "std": 12.969341556461659,
+        "ci95_half_width": 3.594918069942624,
+        "n": 50
+      },
+      "reroute_count": {
+        "mean": 1.06,
+        "std": 0.23989793748209526,
+        "ci95_half_width": 0.06649631568741234,
+        "n": 50
+      },
+      "recovery_success_rate": 1.0,
+      "recovery_success_n": 50,
+      "mean_post_reroute_max_utilization": {
+        "mean": 0.3999999999999999,
+        "std": 1.1214946133455537e-16,
+        "ci95_half_width": 3.1086244689504386e-17,
+        "n": 50
+      }
+    },
+    "random_valid": {
+      "episode_reward": {
+        "mean": -39.14043946669305,
+        "std": 261.79163369535166,
+        "ci95_half_width": 72.56493866200402,
+        "n": 50
+      },
+      "reroute_count": {
+        "mean": 35.78,
+        "std": 3.924231368909674,
+        "ci95_half_width": 1.0877414398651915,
+        "n": 50
+      },
+      "recovery_success_rate": 0.68,
+      "recovery_success_n": 50,
+      "mean_post_reroute_max_utilization": {
+        "mean": 0.5365028282231197,
+        "std": 0.04433074302466159,
+        "ci95_half_width": 0.012287855051048369,
+        "n": 50
+      }
+    },
+    "always_shortest_path": {
+      "episode_reward": {
+        "mean": -49.084202899353905,
+        "std": 5.158253269686947,
+        "ci95_half_width": 1.429794859500742,
+        "n": 50
+      },
+      "reroute_count": {
+        "mean": 0.0,
+        "std": 0.0,
+        "ci95_half_width": 0.0,
+        "n": 50
+      },
+      "recovery_success_rate": 0.0,
+      "recovery_success_n": 50,
+      "mean_post_reroute_max_utilization": null
+    },
+    "always_least_utilized": {
+      "episode_reward": {
+        "mean": -271.37766450549157,
+        "std": 350.33784511563255,
+        "ci95_half_width": 97.10869626711809,
+        "n": 50
+      },
+      "reroute_count": {
+        "mean": 60.0,
+        "std": 0.0,
+        "ci95_half_width": 0.0,
+        "n": 50
+      },
+      "recovery_success_rate": 0.0,
+      "recovery_success_n": 50,
+      "mean_post_reroute_max_utilization": {
+        "mean": 0.6089800462058177,
+        "std": 0.04376636823520888,
+        "ci95_half_width": 0.012131418340673293,
+        "n": 50
+      }
+    }
+  }
+}
