@@ -60,7 +60,7 @@ def generate_candidate_paths(
     return paths
 
 
-def _link_id_for_edge(u: int, v: int) -> str:
+def link_id_for_edge(u: int, v: int) -> str:
     a, b = sorted((f"s{u}", f"s{v}"))
     return f"{a}-{b}"
 
@@ -95,7 +95,7 @@ def compute_path_cost(
     max_loss = 0.0
 
     for u, v in zip(path, path[1:]):
-        metrics = link_metrics.get(_link_id_for_edge(u, v), LinkMetrics())
+        metrics = link_metrics.get(link_id_for_edge(u, v), LinkMetrics())
         if metrics.utilization is not None:
             max_utilization = max(max_utilization, metrics.utilization)
         if metrics.latency_ms is not None:

@@ -81,6 +81,16 @@ path:
     loss: 2.0
     hop_count: 0.25
 
+baselines:
+  # B2 (rule-based reactive, controller/baselines/rule_based.py): reroute
+  # if a link's CURRENT (not predicted, not persisted) utilization/loss
+  # exceeds these fixed thresholds. Deliberately separate from
+  # ml.threshold/persistence.* -- B2 exists precisely to isolate simple
+  # reactive thresholding from prediction+persistence in the Phase 22
+  # comparison study.
+  b2_utilization_threshold: 0.80
+  b2_loss_threshold: 0.10
+
 rl:
   algorithm: MaskablePPO
   timeout_ms: 200

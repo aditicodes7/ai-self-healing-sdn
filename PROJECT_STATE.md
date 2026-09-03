@@ -33,9 +33,8 @@ Never re-ask anything recorded here.
 
 ## Current phase
 
-**Phase 14 — COMPLETE.** Verifier + retry and unresolved handling (forced
--failure test ends UNRESOLVED, not a loop). Next: Phase 15 (baselines B1
-and B2).
+**Phase 15 — COMPLETE.** Baselines B1 and B2 (both run end to end on the
+same scenarios). Next: Phase 16 (RL env + simulator + calibration).
 
 ## Completed components
 
@@ -487,10 +486,37 @@ and B2).
   11/11 new tests green (5 `classify()`, 6 retry-orchestration
   including the gate test).
 
+**Phase 15 — baselines B1 and B2:**
+- `controller/baselines/shortest_path.py` (B1) — `ShortestPathBaseline`
+  computes a single `nx.shortest_path` per flow and NEVER reroutes for
+  degradation/congestion; only recomputes if the currently-installed
+  path is no longer physically valid in the topology graph (a real
+  failure), the same way ordinary L3 routing would react. No metrics
+  input at all — represents "no self-healing" as the comparison study's
+  floor.
+- `controller/baselines/rule_based.py` (B2) — `RuleBasedBaseline`
+  reroutes only when a link's CURRENT (not predicted, not persisted)
+  utilization/loss exceeds a fixed threshold
+  (`baselines.b2_utilization_threshold`/`b2_loss_threshold`, new config
+  section — nothing hardcoded). Isolates simple reactive thresholding
+  from prediction+persistence (P1), which is the whole point of having
+  it as a separate baseline. Reuses `path_computer.py`'s candidate
+  ranking for path selection once triggered; made
+  `link_id_for_edge()` a public helper there since both this and
+  `path_computer.py` itself need it.
+- **Gate result —**`test_both_baselines_run_end_to_end_on_the_same_
+  scenario`: runs B1 and B2 through the identical sequence of
+  conditions (healthy→congested→healthy) on `scenario_a`, confirming
+  they're not just non-crashing but behaving AS DESIGNED and
+  DIFFERENTLY: B1's path is identical across all 3 steps (never reacts);
+  B2 reroutes exactly when congestion crosses its threshold and stays on
+  the new path afterward (reactive, not proactive — no oscillation back
+  on its own). 12/12 new tests green.
+
 ## Pending components
 
-Phase 15 onward: baselines B1 (shortest-path) and B2 (rule-based
-reactive), then the RL environment.
+Phase 16 onward: RL environment + simulator + calibration, then RL
+training.
 
 ## Known issues
 
@@ -506,11 +532,11 @@ horizon 10s, verify settle 8s. `project.controller_backend: ryu`.
 
 ## Test status
 
-116/116 unit tests passing (`test_config.py`, `test_db.py`, `test_logging.py`,
+131/131 unit tests passing (`test_config.py`, `test_db.py`, `test_logging.py`,
 `test_of_compat.py`, `test_features.py`, `test_failure_injector.py`,
 `test_ml_rl_service.py`, `test_path_computer.py`, `test_persistence_tracker.py`,
 `test_stability_manager.py`, `test_flow_manager.py`, `test_remediation_manager.py`,
-`test_verifier.py`) under
+`test_verifier.py`, `test_baselines.py`) under
 venv-ml (Python 3.11.9) on macOS. Phases 2-5's Mininet/Ryu gates all
 passed with real measured results in `sdn-vm`, reproduced twice
 independently for Phase 5. Phase 6's train/live feature-equality gate

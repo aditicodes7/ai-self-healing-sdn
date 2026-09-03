@@ -99,6 +99,12 @@ class PathConfig:
 
 
 @dataclasses.dataclass(frozen=True)
+class BaselinesConfig:
+    b2_utilization_threshold: float
+    b2_loss_threshold: float
+
+
+@dataclasses.dataclass(frozen=True)
 class RLRewardWeightsConfig:
     w1_throughput: float
     w2_latency: float
@@ -186,6 +192,7 @@ class Config:
     persistence: PersistenceConfig
     stability: StabilityConfig
     path: PathConfig
+    baselines: BaselinesConfig
     rl: RLConfig
     flow: FlowConfig
     verify: VerifyConfig
@@ -229,6 +236,7 @@ def load_config(path: str | Path | None = None) -> Config:
         persistence = _get(raw, "persistence", "root")
         stability = _get(raw, "stability", "root")
         path_cfg = _get(raw, "path", "root")
+        baselines = _get(raw, "baselines", "root")
         rl = _get(raw, "rl", "root")
         flow = _get(raw, "flow", "root")
         verify = _get(raw, "verify", "root")
@@ -295,6 +303,10 @@ def load_config(path: str | Path | None = None) -> Config:
             path=PathConfig(
                 k_shortest=_get(path_cfg, "k_shortest", "path"),
                 weights=PathWeightsConfig(**_get(path_cfg, "weights", "path")),
+            ),
+            baselines=BaselinesConfig(
+                b2_utilization_threshold=_get(baselines, "b2_utilization_threshold", "baselines"),
+                b2_loss_threshold=_get(baselines, "b2_loss_threshold", "baselines"),
             ),
             rl=RLConfig(
                 algorithm=_get(rl, "algorithm", "rl"),
