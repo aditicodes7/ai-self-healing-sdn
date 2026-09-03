@@ -33,9 +33,8 @@ Never re-ask anything recorded here.
 
 ## Current phase
 
-**Phase 10 — COMPLETE.** Inference service + controller client + fallback
-(live P(degradation) logged per link). Next: Phase 11 (path computation,
-k-shortest + weighted cost).
+**Phase 11 — COMPLETE.** Path computation, k-shortest + weighted cost.
+Next: Phase 12 (persistence tracker + stability manager).
 
 ## Completed components
 
@@ -372,10 +371,32 @@ k-shortest + weighted cost).
     predictions), zero crashes/tracebacks, controller kept running
     normally throughout.
 
+**Phase 11 — path computation:**
+- `controller/path_computer.py` — pure Python + networkx (no ryu/mininet
+  dependency; verified importing under both venv-ml and the real
+  venv-ctrl). Deliberately two separate steps:
+  `generate_candidate_paths()` returns up to `path.k_shortest` simple
+  (loopless) paths via `nx.shortest_simple_paths`, shortest-hop-count
+  first, independent of current traffic so candidates stay stable while
+  telemetry is noisy; `compute_path_cost()` scores ONE candidate against
+  current per-link `LinkMetrics` (max utilization and max loss along the
+  path — a bottleneck link dominates, so summing would understate it —
+  plus summed latency and hop count, weighted per `path.weights`).
+  `rank_candidate_paths()` combines both, sorted ascending (best first).
+  A link with no metrics yet defaults to zero contribution — an
+  explicit, documented "assume healthy until proven otherwise" choice,
+  not a silent one; Phase 12's persistence/stability logic is what
+  actually gates any reroute decision, not this function.
+- **Gate result:** 14/14 new unit tests green, including
+  `test_candidates_exist_for_every_switch_pair` (all 30 ordered pairs
+  across `scenario_a`'s 6 switches) and a direct re-verification that
+  h1->h6 (s1->s6) really does have 4 distinct loop-free candidates, not
+  just that the topology supports them in principle.
+
 ## Pending components
 
-Phase 11 onward: path computation (k-shortest + weighted cost), then
-persistence/stability logic.
+Phase 12 onward: persistence tracker + stability manager, then flow
+manager + remediation manager.
 
 ## Known issues
 
@@ -391,9 +412,9 @@ horizon 10s, verify settle 8s. `project.controller_backend: ryu`.
 
 ## Test status
 
-53/53 unit tests passing (`test_config.py`, `test_db.py`, `test_logging.py`,
+68/68 unit tests passing (`test_config.py`, `test_db.py`, `test_logging.py`,
 `test_of_compat.py`, `test_features.py`, `test_failure_injector.py`,
-`test_ml_rl_service.py`) under
+`test_ml_rl_service.py`, `test_path_computer.py`) under
 venv-ml (Python 3.11.9) on macOS. Phases 2-5's Mininet/Ryu gates all
 passed with real measured results in `sdn-vm`, reproduced twice
 independently for Phase 5. Phase 6's train/live feature-equality gate
