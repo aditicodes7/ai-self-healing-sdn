@@ -21,16 +21,21 @@ Never re-ask anything recorded here.
 - **venv-ctrl:** Python 3.9.25, lives at
   `$HOME/venv-ctrl-ai-self-healing-sdn` inside the VM (outside the repo
   directory — see decisions.md). Built by `scripts/setup_env.sh ctrl`.
-- **venv-ml:** Python 3.11.9, `<repo>/venv-ml` on macOS. Built by
-  `scripts/setup_env.sh ml`.
+- **venv-ml:** Python 3.11.9, `<repo>/venv-ml` on macOS (used for
+  training/dataset generation — Phases 8-9). Built by
+  `scripts/setup_env.sh ml`. A SECOND `venv-ml` (Python 3.11.15) now
+  also exists inside `sdn-vm` at `<repo>/venv-ml`, added Phase 10:
+  `service/ml_rl_service.py` must be reachable via `localhost` from the
+  controller, which runs in the VM, so the inference service runs there
+  too — see decisions.md (2026-09-03).
 - `project.controller_backend: ryu` in `config/config.yaml` (decided
   Phase 2 GO/NO-GO smoke test — no os-ken fallback needed).
 
 ## Current phase
 
-**Phase 9 — COMPLETE.** ML train + evaluate (real metrics in
-results/tables/ml_metrics.json + figures). Next: Phase 10 (inference
-service + controller client + fallback).
+**Phase 10 — COMPLETE.** Inference service + controller client + fallback
+(live P(degradation) logged per link). Next: Phase 11 (path computation,
+k-shortest + weighted cost).
 
 ## Completed components
 
@@ -329,10 +334,48 @@ service + controller client + fallback).
   not a claim about real-world failure dynamics) in
   `docs/limitations.md`. Real figures saved to `results/figures/ml_*.png`.
 
+**Phase 10 — inference service + controller client + fallback:**
+- `service/ml_rl_service.py` — FastAPI service (runs under a NEW `venv-ml`
+  now also installed inside `sdn-vm`, see decisions.md — the controller
+  needs `localhost` HTTP reachability and it runs in the VM, not the
+  Mac) loading `models/degradation_model.joblib` + `metadata.json` once
+  at startup. `POST /infer/degradation` returns a real probability from
+  the trained model; `GET /health` reports load status. Returns 503
+  (never a fabricated probability) if the model failed to load. Phase
+  18's RL route endpoint will be added to this same process later, per
+  the repo layout — one service, two trained artefacts.
+- `controller/inference_client.py` — HTTP client under venv-ctrl (no
+  scikit-learn there by design). The safety gate: any failure (timeout,
+  connection refused, non-200, malformed body, out-of-range probability)
+  returns `None`, never a substituted or last-known-good value; callers
+  must treat `None` as "no prediction this round."
+- `controller/telemetry_collector.py` now runs the real live prediction
+  loop: each port-stats poll on a discovered link is converted to a
+  `RawWindow` (via `common/features.py`, merging in the latest latency
+  probe), appended to a bounded per-(link, switch-side) history matching
+  `ml/dataset/generate_dataset.py`'s granularity exactly, turned into a
+  feature vector, sent to the inference client, and (only on success)
+  written to the `predictions` table.
+- Fixed `network/topo_builder.py`'s Mininet imports (moved from
+  module-level to function-local): `load_topology_spec()` is now
+  importable from venv-ctrl (no mininet installed there) so
+  `telemetry_collector.py` can use it to get link capacities. Verified
+  `load_topology_spec` still works standalone and all other
+  `network/*.py` scripts still import correctly.
+- **Gate result — verified both halves in `sdn-vm` with the real
+  service, real controller, real Mininet:**
+  - Service running: **320 real predictions** written to `predictions`,
+    all correctly low (0.0-0.037) for a healthy network with no faults
+    injected — sane, not fabricated.
+  - Service killed mid-run: **112 graceful fallback warnings** logged,
+    prediction count stayed exactly at 320 (zero fabricated
+    predictions), zero crashes/tracebacks, controller kept running
+    normally throughout.
+
 ## Pending components
 
-Phase 10 onward: inference service + controller client + fallback, then
-path computation.
+Phase 11 onward: path computation (k-shortest + weighted cost), then
+persistence/stability logic.
 
 ## Known issues
 
@@ -348,8 +391,9 @@ horizon 10s, verify settle 8s. `project.controller_backend: ryu`.
 
 ## Test status
 
-47/47 unit tests passing (`test_config.py`, `test_db.py`, `test_logging.py`,
-`test_of_compat.py`, `test_features.py`, `test_failure_injector.py`) under
+53/53 unit tests passing (`test_config.py`, `test_db.py`, `test_logging.py`,
+`test_of_compat.py`, `test_features.py`, `test_failure_injector.py`,
+`test_ml_rl_service.py`) under
 venv-ml (Python 3.11.9) on macOS. Phases 2-5's Mininet/Ryu gates all
 passed with real measured results in `sdn-vm`, reproduced twice
 independently for Phase 5. Phase 6's train/live feature-equality gate
@@ -367,7 +411,10 @@ produced ROC-AUC 0.83-0.84, PR-AUC 0.37-0.38, with permutation
 importance confirming the model uses the intended signal. Real metrics
 in results/tables/ml_metrics.json + 5 figures in results/figures/; model
 save/load reproducibility independently verified via
-ml/evaluate_model.py.
+ml/evaluate_model.py. Phase 10's live-inference gate passed: 320 real
+predictions logged with the service running, 112 graceful fallback
+warnings and zero fabricated predictions with it killed mid-run, zero
+crashes either way.
 
 ## Experiment status
 

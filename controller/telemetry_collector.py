@@ -23,6 +23,19 @@ link_id/timestamp/latency_ms/latency_is_estimate/data_source populated
 (window_s=0, feature_json='{}') since features.py doesn't own real
 windowed aggregation until Phase 6 -- this is an honest raw sample, not a
 fabricated windowed feature.
+
+Phase 10 adds the live prediction loop: each port-stats poll that lands
+on a discovered inter-switch link is turned into a RawWindow (via
+common/features.compute_base_metrics(), merging in the latest latency
+probe for that link) and appended to a per-(link, switch-side) history,
+matching ml/dataset/generate_dataset.py's granularity exactly so the
+SAME compute_feature_vector() call produces comparable features live and
+in training. The resulting feature vector is sent to
+service/ml_rl_service.py via controller/inference_client.py; a None
+result (service down, timeout, malformed response) means no prediction
+this round -- no row is written to `predictions`, and no fallback value
+is fabricated. Downstream consumers (Phase 12's persistence tracker) must
+treat "no recent prediction" as inconclusive, not as healthy.
 """
 from __future__ import annotations
 
@@ -32,8 +45,10 @@ import time
 from pathlib import Path
 
 from common.config_loader import load_config
+from common.features import RawWindow, compute_base_metrics, compute_feature_vector
 from common.logging_setup import configure_logging
 from common.schema import PROBE_ETH_TYPE, DataSource
+from controller.inference_client import InferenceClient
 from controller.of_compat import (
     DEAD_DISPATCHER,
     MAIN_DISPATCHER,
@@ -46,6 +61,7 @@ from controller.of_compat import (
 )
 from controller.topology_manager import TopologyManager
 from database.db import Database
+from network.topo_builder import load_topology_spec
 
 logger = configure_logging("controller.telemetry_collector")
 
@@ -56,6 +72,12 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 _OFPP_RESERVED_MIN = 0xFFFFFF00
 
 _PROBE_HEADER = struct.Struct("!Qd")  # probe_id (uint64), send_ts (double)
+
+# Bounds memory for per-(link, switch-side) RawWindow history. Comfortably
+# larger than the biggest configured rolling window (features.windows,
+# default max 10) -- history only needs to hold enough recent samples for
+# compute_feature_vector(), not the whole run.
+_MAX_HISTORY_LEN = 50
 
 
 class TelemetryCollector(app_manager.RyuApp):
@@ -75,6 +97,24 @@ class TelemetryCollector(app_manager.RyuApp):
         self.echo_rtt_s: dict[int, float] = {}
         self._pending_probes: dict[tuple[int, int, int], float] = {}
         self._probe_seq = 0
+
+        # Live prediction loop state (Phase 10). link_capacities_bps comes
+        # from the same topology YAML topo_builder.py used to build the
+        # network -- the controller has no other way to learn a link's
+        # configured bandwidth.
+        topo_spec = load_topology_spec(cfg.network.topology_name)
+        self._link_capacities_bps: dict[str, float] = {
+            "-".join(sorted(link["endpoints"])): link["bw"] * 1_000_000
+            for link in topo_spec["links"] if "bw" in link
+        }
+        self._link_history: dict[tuple[str, str], list[RawWindow]] = {}
+        self._latest_latency_ms: dict[str, float] = {}
+        self._features_config = cfg.features
+        self._ml_threshold = cfg.ml.threshold
+        self._label_horizon_s = cfg.label.horizon_s
+        self._inference_client = InferenceClient(
+            cfg.ml_rl_service.host, cfg.ml_rl_service.port, cfg.ml.inference_timeout_ms
+        )
 
         self._monitor_thread = hub.spawn(self._run_forever, self._poll_all_port_stats, self.interval_s)
         self._echo_thread = hub.spawn(self._run_forever, self._send_all_echo_requests, self.echo_interval_s)
@@ -140,9 +180,9 @@ class TelemetryCollector(app_manager.RyuApp):
 
             key = (dpid, stat.port_no)
             prev = self._prev_counters.get(key)
-            self._prev_counters[key] = {"t": now, "tx_bytes": stat.tx_bytes, "rx_bytes": stat.rx_bytes}
+            self._prev_counters[key] = row
             if prev is not None:
-                dt = now - prev["t"]
+                dt = now - prev["timestamp"]
                 delta_rx = stat.rx_bytes - prev["rx_bytes"]
                 delta_tx = stat.tx_bytes - prev["tx_bytes"]
                 # Counter reset (switch restarted, or 64-bit wrap): don't
@@ -155,6 +195,50 @@ class TelemetryCollector(app_manager.RyuApp):
                             "rx_bytes_per_s": delta_rx / dt, "tx_bytes_per_s": delta_tx / dt,
                         },
                     )
+
+                if row["link_id"] is not None:
+                    self._update_features_and_predict(row["link_id"], str(dpid), prev, row)
+
+    def _update_features_and_predict(self, link_id: str, switch_id: str, prev_row: dict, curr_row: dict) -> None:
+        dt = curr_row["timestamp"] - prev_row["timestamp"]
+        curr_with_latency = dict(curr_row)
+        curr_with_latency["latency_ms"] = self._latest_latency_ms.get(link_id)
+
+        base = compute_base_metrics(
+            prev_row, curr_with_latency, dt, self._link_capacities_bps.get(link_id)
+        )
+        if base is None:
+            return
+
+        history_key = (link_id, switch_id)
+        history = self._link_history.setdefault(history_key, [])
+        history.append(base)
+        if len(history) > _MAX_HISTORY_LEN:
+            del history[: len(history) - _MAX_HISTORY_LEN]
+
+        feature_vector = compute_feature_vector(
+            history, len(history) - 1,
+            windows=self._features_config.windows,
+            ewma_alpha=self._features_config.ewma_alpha,
+            baseline_windows=self._features_config.baseline_healthy_windows,
+        )
+
+        result = self._inference_client.predict_degradation(link_id, feature_vector)
+        if result is None:
+            return  # safety gate: no prediction this round, nothing fabricated
+
+        probability, model_version = result
+        self._db.insert(
+            "predictions",
+            {
+                "timestamp": curr_row["timestamp"],
+                "link_id": link_id,
+                "probability": probability,
+                "threshold": self._ml_threshold,
+                "model_version": model_version,
+                "horizon_s": self._label_horizon_s,
+            },
+        )
 
     def _link_id_for(self, dpid: int, port_no: int) -> str | None:
         graph = self.topology_manager.graph
@@ -258,6 +342,7 @@ class TelemetryCollector(app_manager.RyuApp):
 
         a, b = sorted((f"s{src_dpid}", f"s{dst_dpid}"))
         link_id = f"{a}-{b}"
+        self._latest_latency_ms[link_id] = latency_estimate_s * 1000.0
         self._db.insert(
             "features",
             {

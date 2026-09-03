@@ -16,6 +16,14 @@ controller:
   of_listen_host: "0.0.0.0"
   of_listen_port: 6653
 
+network:
+  # Which network/topologies/<name>.yaml the live controller assumes.
+  # Needed for link capacity_bps (utilization = throughput / capacity),
+  # since the controller has no other way to learn a link's configured
+  # bandwidth -- OpenFlow doesn't report it, and it's not something LLDP
+  # discovery carries. Must match whatever topo_builder.py actually built.
+  topology_name: scenario_a
+
 telemetry:
   interval_s: 2
   probe_timeout_s: 1.0
@@ -45,6 +53,15 @@ ml:
     - histgradientboosting
     - randomforest
     - logisticregression_baseline
+  # inference_client.py's HTTP call budget to ml_rl_service.py. Exceeding
+  # this (or any connection failure) triggers the safety-gate fallback:
+  # no prediction is fabricated, the miss is logged, and callers must
+  # treat "no recent prediction" as inconclusive, never as "healthy".
+  inference_timeout_ms: 300
+
+ml_rl_service:
+  host: "127.0.0.1"
+  port: 8100
 
 persistence:
   window: 4

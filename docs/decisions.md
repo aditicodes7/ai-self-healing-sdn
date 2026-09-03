@@ -70,6 +70,18 @@ executing the plan.
   Python needed `python3-yaml` (apt) added for topology-spec parsing;
   `iperf3` (apt) provides the CLI the approved stack specifies for
   throughput measurement.
+- 2026-09-03: `service/ml_rl_service.py` (Phase 10's ML inference
+  service, and later Phase 18's RL policy service) must be reachable via
+  `localhost` HTTP from the Ryu controller per the approved architecture
+  ("communicate over localhost HTTP"). Since the controller runs inside
+  `sdn-vm` (not on the Mac host, per Phase 2's decision), the service
+  must also run inside `sdn-vm` -- so a second interpreter, `venv-ml`
+  (Python 3.11.15, installed via deadsnakes, same PPA already added in
+  Phase 2), now exists in the VM alongside `venv-ctrl`, built the same
+  way as the Mac's `venv-ml` via `scripts/setup_env.sh ml`. The Mac's
+  own `venv-ml` remains the one used for training (Phases 8-9) and stays
+  the faster/more convenient place to iterate; the VM's `venv-ml` exists
+  specifically to serve the already-trained model live.
 - 2026-09-02/03: Phase 9's near-chance ML result (ROC-AUC ~0.52-0.56) was
   traced to `failure_injector.py` faults being instantaneous step
   functions with no pre-fault precursor -- the anticipation window (the

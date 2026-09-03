@@ -31,6 +31,11 @@ class ControllerConfig:
 
 
 @dataclasses.dataclass(frozen=True)
+class NetworkConfig:
+    topology_name: str
+
+
+@dataclasses.dataclass(frozen=True)
 class TelemetryConfig:
     interval_s: float
     probe_timeout_s: float
@@ -56,6 +61,13 @@ class MLConfig:
     model_path: str
     metadata_path: str
     candidate_models: tuple[str, ...]
+    inference_timeout_ms: int
+
+
+@dataclasses.dataclass(frozen=True)
+class MLRLServiceConfig:
+    host: str
+    port: int
 
 
 @dataclasses.dataclass(frozen=True)
@@ -165,10 +177,12 @@ class SeedsConfig:
 class Config:
     project: ProjectConfig
     controller: ControllerConfig
+    network: NetworkConfig
     telemetry: TelemetryConfig
     features: FeaturesConfig
     label: LabelConfig
     ml: MLConfig
+    ml_rl_service: MLRLServiceConfig
     persistence: PersistenceConfig
     stability: StabilityConfig
     path: PathConfig
@@ -206,10 +220,12 @@ def load_config(path: str | Path | None = None) -> Config:
     try:
         project = _get(raw, "project", "root")
         controller = _get(raw, "controller", "root")
+        network = _get(raw, "network", "root")
         telemetry = _get(raw, "telemetry", "root")
         features = _get(raw, "features", "root")
         label = _get(raw, "label", "root")
         ml = _get(raw, "ml", "root")
+        ml_rl_service = _get(raw, "ml_rl_service", "root")
         persistence = _get(raw, "persistence", "root")
         stability = _get(raw, "stability", "root")
         path_cfg = _get(raw, "path", "root")
@@ -240,6 +256,9 @@ def load_config(path: str | Path | None = None) -> Config:
                 of_listen_host=_get(controller, "of_listen_host", "controller"),
                 of_listen_port=_get(controller, "of_listen_port", "controller"),
             ),
+            network=NetworkConfig(
+                topology_name=_get(network, "topology_name", "network"),
+            ),
             telemetry=TelemetryConfig(
                 interval_s=_get(telemetry, "interval_s", "telemetry"),
                 probe_timeout_s=_get(telemetry, "probe_timeout_s", "telemetry"),
@@ -257,6 +276,11 @@ def load_config(path: str | Path | None = None) -> Config:
                 model_path=_get(ml, "model_path", "ml"),
                 metadata_path=_get(ml, "metadata_path", "ml"),
                 candidate_models=tuple(_get(ml, "candidate_models", "ml")),
+                inference_timeout_ms=_get(ml, "inference_timeout_ms", "ml"),
+            ),
+            ml_rl_service=MLRLServiceConfig(
+                host=_get(ml_rl_service, "host", "ml_rl_service"),
+                port=_get(ml_rl_service, "port", "ml_rl_service"),
             ),
             persistence=PersistenceConfig(
                 window=_get(persistence, "window", "persistence"),

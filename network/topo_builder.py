@@ -17,11 +17,14 @@ import time
 from pathlib import Path
 
 import yaml
-from mininet.cli import CLI
-from mininet.link import TCLink
-from mininet.log import setLogLevel
-from mininet.net import Mininet
-from mininet.node import OVSSwitch, RemoteController
+
+# Mininet imports are deferred into the functions that need them, not
+# module-level: this module's load_topology_spec()/TopologySpecError are
+# also imported by controller/telemetry_collector.py (running under
+# venv-ctrl, which has no mininet package at all -- mininet is only
+# installed against the VM's system Python, see docs/decisions.md). A
+# module-level `import mininet` would make this whole file unimportable
+# from venv-ctrl.
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TOPO_DIR = REPO_ROOT / "network" / "topologies"
@@ -68,6 +71,10 @@ def build_network(
     onward), pass fail_mode='secure' so all forwarding is actually decided
     by the controller instead of OVS's local learning falling back
     silently."""
+    from mininet.link import TCLink
+    from mininet.net import Mininet
+    from mininet.node import OVSSwitch, RemoteController
+
     net = Mininet(controller=None, switch=OVSSwitch, link=TCLink, autoSetMacs=True)
     net.addController(
         "c0", controller=RemoteController, ip=controller_ip, port=controller_port
@@ -136,6 +143,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--log-level", default="info")
     args = parser.parse_args(argv)
 
+    from mininet.log import setLogLevel
+
     setLogLevel(args.log_level)
     spec = load_topology_spec(args.topo)
     net = build_network(spec, args.controller_ip, args.controller_port, args.fail_mode)
@@ -150,6 +159,8 @@ def main(argv: list[str] | None = None) -> int:
             dropped_pct = net.pingAll()
             exit_code = 1 if dropped_pct > 0 else 0
         else:
+            from mininet.cli import CLI
+
             CLI(net)
     finally:
         net.stop()
