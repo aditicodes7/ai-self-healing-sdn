@@ -1,0 +1,100 @@
+{
+  "scenarios": [
+    {
+      "client": "h1",
+      "server": "h2",
+      "link_id": "s1-s2",
+      "capacity_mbit": 10,
+      "delay_ms": 2.0,
+      "offered_mbit": 2,
+      "real": {
+        "throughput_mbit": 2.001650346528772,
+        "latency_ms": 2.0524999999999998,
+        "loss_rate": 0.0
+      },
+      "simulator": {
+        "throughput_mbit": 2.0,
+        "latency_ms": 2.3,
+        "loss_rate": 0.0
+      },
+      "relative_error": {
+        "throughput": 0.0008244929148759941,
+        "latency": 0.12058465286236301
+      }
+    },
+    {
+      "client": "h1",
+      "server": "h2",
+      "link_id": "s1-s2",
+      "capacity_mbit": 10,
+      "delay_ms": 2.0,
+      "offered_mbit": 8,
+      "real": {
+        "throughput_mbit": 7.999803202637086,
+        "latency_ms": 2.03875,
+        "loss_rate": 0.0
+      },
+      "simulator": {
+        "throughput_mbit": 8.0,
+        "latency_ms": 6.800000000000001,
+        "loss_rate": 0.0
+      },
+      "relative_error": {
+        "throughput": 2.460027552294686e-05,
+        "latency": 2.335377069282649
+      }
+    },
+    {
+      "client": "h1",
+      "server": "h2",
+      "link_id": "s1-s2",
+      "capacity_mbit": 10,
+      "delay_ms": 2.0,
+      "offered_mbit": 15,
+      "real": {
+        "throughput_mbit": 12.030870502326648,
+        "latency_ms": 2.0375,
+        "loss_rate": 0.1978683966635774
+      },
+      "simulator": {
+        "throughput_mbit": 6.666666666666668,
+        "latency_ms": 1200.7999999999988,
+        "loss_rate": 0.33333333333333326
+      },
+      "relative_error": {
+        "throughput": 0.44586996715014077,
+        "latency": 588.3496932515332
+      }
+    },
+    {
+      "client": "h2",
+      "server": "h3",
+      "link_id": "s2-s3",
+      "capacity_mbit": 10,
+      "delay_ms": 2.0,
+      "offered_mbit": 5,
+      "real": {
+        "throughput_mbit": 4.99958440581832,
+        "latency_ms": 3.11375,
+        "loss_rate": 0.0
+      },
+      "simulator": {
+        "throughput_mbit": 5.0,
+        "latency_ms": 3.2,
+        "loss_rate": 0.0
+      },
+      "relative_error": {
+        "throughput": 8.3125745651275e-05,
+        "latency": 0.02769971898835814
+      }
+    }
+  ],
+  "summary": {
+    "n_scenarios": 4,
+    "mean_throughput_relative_error": 0.11170054652154775,
+    "max_throughput_relative_error": 0.44586996715014077,
+    "mean_latency_relative_error": 147.70833867316665,
+    "max_latency_relative_error": 588.3496932515332
+  },
+  "data_source": "emulated_mininet_vs_synthetic_simulator"
+}

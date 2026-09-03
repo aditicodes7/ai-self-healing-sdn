@@ -243,5 +243,64 @@ and the label is not simply linear, which is part of why
 HistGradientBoosting/RandomForest were included as candidates rather
 than shipping only a linear baseline.
 
-Further entries (RL simulator calibration, queue-occupancy availability,
-etc.) are added as those phases are reached.
+## RL simulator calibration: throughput excellent, latency queueing model overestimates real delay (Phase 16)
+
+`rl/env/simulator.py` is a pure-numpy M/M/1-style queueing approximation
+standing in for real Mininet during RL training (Phase 17), because
+PPO's step counts (200k-500k) are infeasible against real Mininet -- each
+step would need real wall-clock network I/O. This substitution is stated
+openly here and in the technical paper, not hidden, per the project's own
+requirement. `rl/calibrate.py` compares the simulator against real
+Mininet for 4 identical scenarios (same link capacity/delay, same
+offered UDP load) — full results in
+`results/tables/simulator_calibration.json`.
+
+**Two real bugs in the calibration script itself, found and fixed before
+trusting any result:** (1) iperf3's UDP JSON reports `bits_per_second` as
+the SENDER's offered rate, not what was actually received — achieved
+throughput needed `offered * (1 - loss_fraction)`, confirmed by an
+initial run showing ~15Mbit "received" on a 10Mbit-capped link;
+(2) `ping` measures round-trip time, but the simulator's `latency_ms` is
+one-way (matches the topology YAML's per-link `delay`) — halved before
+comparing. Both fixed, then re-measured for real.
+
+**Throughput calibration is excellent** for under/near-capacity traffic:
+relative error 0.008%-0.08% across three scenarios at 20-80% of link
+capacity. The over-capacity scenario (150% offered) is far less accurate
+(45% relative error) — real Mininet delivered more throughput
+(12.03 Mbit) than the simulator's simple droptail approximation predicts
+(6.67 Mbit) when significantly oversubscribed, likely because TCLink's
+real token-bucket rate limiting allows some burst tolerance the model
+doesn't capture.
+
+**Latency calibration reveals a genuine, real finding, not a bug:** at
+low utilization (20%), the M/M/1 queueing model is reasonably close
+(12% relative error). At 80% utilization, it overestimates badly (234%
+relative error) — the model predicts +4.8ms of queueing delay on top of
+the 2ms propagation delay, but real measured latency was 2.04ms,
+essentially just the propagation delay with almost no queueing
+contribution at all. Real Mininet/TCLink links do not build up
+M/M/1-predicted queueing delay the way the idealized formula assumes,
+at least not within a 5-second test window at this load level — plausible
+explanations include TCLink's actual queue discipline (Linux HTB/TBF)
+having enough buffering to absorb short bursts without delay build-up,
+or `ping`'s own small packets experiencing different treatment than the
+bulk UDP flow being measured. This was NOT worked around with an
+uncalibrated fudge factor on the simulator's queueing term -- that would
+trade one unverified number for another. It is reported as-is.
+
+**Consequence for Phase 17 RL training, stated plainly:** the reward
+signal's latency component will be based on a queueing model that
+systematically overstates the latency penalty of routing through a
+congested link relative to real Mininet behavior. This is a conservative
+bias (the trained policy will likely be MORE averse to congestion than
+strictly optimal, not less), not a dangerous one, but it means absolute
+latency-related reward magnitudes from simulator-trained behavior should
+not be presented as calibrated real-world latency predictions -- only the
+*throughput* side of the simulator has been calibrated to that standard.
+This should be stated explicitly in the technical paper's RL methodology
+section, exactly where the sim-to-real gap is normally addressed in the
+RL literature.
+
+Further entries (queue-occupancy availability, etc.) are added as those
+phases are reached.

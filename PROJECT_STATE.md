@@ -33,8 +33,9 @@ Never re-ask anything recorded here.
 
 ## Current phase
 
-**Phase 15 — COMPLETE.** Baselines B1 and B2 (both run end to end on the
-same scenarios). Next: Phase 16 (RL env + simulator + calibration).
+**Phase 16 — COMPLETE.** RL env + simulator + calibration
+(simulator_calibration.json produced). Next: Phase 17 (RL training +
+evaluation).
 
 ## Completed components
 
@@ -513,10 +514,42 @@ same scenarios). Next: Phase 16 (RL env + simulator + calibration).
   the new path afterward (reactive, not proactive — no oscillation back
   on its own). 12/12 new tests green.
 
+**Phase 16 — RL env + simulator + calibration:**
+- `rl/env/simulator.py` — `NetworkSimulator`, a fast, seeded, pure-numpy
+  queueing model (M/M/1-style approximation) of `network/topologies/
+  *.yaml`. Tracks active flows (fixed-rate, UDP-like offered load routed
+  along a path) and per-link fault state; `step()` aggregates offered
+  load per link across every flow sharing it, computing utilization
+  -> latency (propagation + M/M/1 queueing delay) -> loss (droptail).
+  Congested links split throughput by proportional fair share, not a
+  full TCP model. Supports the same fault shapes as
+  `failure_injector.py` (capacity multiplier, extra delay, loss rate,
+  link-down) via `inject_fault()`/`clear_fault()`. 12/12 unit tests
+  green, including determinism and multi-flow fair-sharing checks.
+- `rl/calibrate.py` — runs 4 identical scenarios (same link
+  capacity/delay, same offered UDP load) on both real Mininet and the
+  simulator, writing `results/tables/simulator_calibration.json`.
+- **Found and fixed two real bugs in the calibration script itself
+  before trusting any result:** iperf3's UDP JSON reports the SENDER's
+  offered rate as `bits_per_second`, not received throughput (fixed:
+  achieved = offered × (1−loss)); `ping` measures round-trip time while
+  the simulator's `latency_ms` is one-way (fixed: halved before
+  comparing).
+- **Gate result — real measured comparison, not fabricated:**
+  throughput calibration is excellent under/near capacity (0.008%-0.08%
+  relative error across 3 scenarios at 20-80% utilization); latency
+  calibration surfaced a genuine sim-to-real gap — the M/M/1 queueing
+  model overestimates real queueing delay under load (234% relative
+  error at 80% utilization: model predicts +4.8ms queueing, real
+  measured +0.04ms). Deliberately NOT patched with an uncalibrated
+  scaling factor. Full discussion and Phase 17 consequence (a
+  conservative congestion-averse training bias, not a dangerous one) in
+  `docs/limitations.md`.
+
 ## Pending components
 
-Phase 16 onward: RL environment + simulator + calibration, then RL
-training.
+Phase 17 onward: RL training (200k-500k steps) + evaluation, then RL
+integration into the controller.
 
 ## Known issues
 
@@ -532,10 +565,11 @@ horizon 10s, verify settle 8s. `project.controller_backend: ryu`.
 
 ## Test status
 
-131/131 unit tests passing (`test_config.py`, `test_db.py`, `test_logging.py`,
+143/143 unit tests passing (`test_config.py`, `test_db.py`, `test_logging.py`,
 `test_of_compat.py`, `test_features.py`, `test_failure_injector.py`,
 `test_ml_rl_service.py`, `test_path_computer.py`, `test_persistence_tracker.py`,
 `test_stability_manager.py`, `test_flow_manager.py`, `test_remediation_manager.py`,
+`test_baselines.py`, `test_simulator.py`,
 `test_verifier.py`, `test_baselines.py`) under
 venv-ml (Python 3.11.9) on macOS. Phases 2-5's Mininet/Ryu gates all
 passed with real measured results in `sdn-vm`, reproduced twice

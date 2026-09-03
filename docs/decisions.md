@@ -70,6 +70,21 @@ executing the plan.
   Python needed `python3-yaml` (apt) added for topology-spec parsing;
   `iperf3` (apt) provides the CLI the approved stack specifies for
   throughput measurement.
+- 2026-09-03: `rl/calibrate.py`'s real-vs-simulator comparison surfaced
+  two real bugs in the calibration script itself (not the simulator's
+  physics), fixed before trusting any result: iperf3's UDP JSON reports
+  the sender's offered rate as `bits_per_second`, not received
+  throughput (achieved = offered * (1-loss)); and `ping` measures
+  round-trip time while the simulator's `latency_ms` is one-way (halved
+  before comparing). After fixing both, throughput calibration is
+  excellent (<0.1% error) under/near capacity; latency calibration
+  showed the M/M/1 queueing model genuinely overestimates real
+  queueing delay under load (234% error at 80% utilization) --
+  deliberately NOT patched with an uncalibrated scaling factor, since
+  that would trade one unverified number for another. Documented as a
+  real sim-to-real gap in docs/limitations.md, with its consequence for
+  Phase 17's reward signal (a conservative congestion-averse bias, not a
+  dangerous one) stated explicitly rather than glossed over.
 - 2026-09-03: `controller/flow_manager.py`'s `incident_cookie()` produced a
   full unsigned 64-bit hash, but SQLite's `INTEGER` column is signed
   64-bit -- confirmed on a live VM run: an `OverflowError` while logging
