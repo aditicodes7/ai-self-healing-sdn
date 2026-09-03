@@ -62,16 +62,21 @@ class RemediationManager:
         graph,
         link_metrics: dict[str, LinkMetrics],
         datapaths: dict[int, object],
-        current_path: list[int],
+        excluded_paths: list[list[int]],
     ) -> tuple[list[int] | None, list[FlowInstallResult]]:
-        """Returns (chosen_path, flow_install_results); chosen_path is
-        None if no viable alternate exists -- the caller must surface this
-        as UNRESOLVED (Phase 14), never retry forever on its own."""
+        """excluded_paths: every path that must NOT be (re-)selected --
+        the originally-failing path plus, on a Phase 14 verifier retry
+        after a FAILED verification, every path already tried for this
+        incident. Returns (chosen_path, flow_install_results); chosen_path
+        is None if no viable alternate exists among what's left -- the
+        caller (Phase 14's Verifier) must surface this as UNRESOLVED,
+        never retry forever on its own."""
         ranked = rank_candidate_paths(
             graph, flow_ctx.src_dpid, flow_ctx.dst_dpid, self.k_shortest, link_metrics,
             self.weight_utilization, self.weight_latency, self.weight_loss, self.weight_hop_count,
         )
-        candidates = [(p, c) for p, c in ranked if p != current_path]  # never re-pick the failing path
+        candidates = [(p, c) for p, c in ranked if p not in excluded_paths]
+        current_path = excluded_paths[0] if excluded_paths else None
 
         if not candidates:
             logger.warning(

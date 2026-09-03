@@ -33,9 +33,9 @@ Never re-ask anything recorded here.
 
 ## Current phase
 
-**Phase 13 — COMPLETE.** Flow manager + remediation manager (rules
-verifiable via `ovs-ofctl dump-flows`). Next: Phase 14 (verifier + retry
-and unresolved handling).
+**Phase 14 — COMPLETE.** Verifier + retry and unresolved handling (forced
+-failure test ends UNRESOLVED, not a loop). Next: Phase 15 (baselines B1
+and B2).
 
 ## Completed components
 
@@ -458,10 +458,39 @@ and unresolved handling).
   chain (s1 in:1→out:3, s4 in:2→out:3, s5 in:2→out:3, s6 in:3→out:1).
   8/8 new flow_manager tests + 5/5 new remediation_manager tests green.
 
+**Phase 14 — verifier + retry and unresolved handling:**
+- `controller/verifier.py` — `classify()` compares post-remediation
+  latency/loss against a pre-remediation `Baseline` plus
+  `verify.tolerance`, returning SUCCESS (both metrics within tolerance),
+  PARTIAL (one metric only), or FAILED (neither, or no telemetry
+  available at all — an explicit case, not silently treated as success).
+  Zero-baseline metrics (e.g. a healthy link's 0% loss) fall back to
+  treating the tolerance fraction as an absolute ceiling instead of a
+  relative one, since "0 * 1.2 = 0" would impossibly demand exact
+  perfection. `Verifier.verify_and_retry()` orchestrates
+  remediate→settle→measure→classify, retrying with the next candidate
+  path (excluding every path already tried this incident) up to
+  `remediation.max_retries` times, then marks the incident UNRESOLVED
+  and stops. `remediate_fn`/`measure_fn`/`sleep_fn` are injected, so the
+  full retry loop is testable without a live network or real delays.
+- Updated `remediation_manager.remediate()`'s signature from a single
+  `current_path` to `excluded_paths: list[list[int]]`, since the
+  verifier's retries need to exclude every previously-tried path, not
+  just the original failing one.
+- **Gate result — `test_forced_failure_ends_unresolved_not_a_loop`:**
+  every verification attempt is forced to FAIL, and a fresh candidate
+  path is always available (never runs out) — exactly the scenario that
+  would spin a naive retry-forever controller indefinitely. Confirmed:
+  `remediate_fn` is called EXACTLY `max_retries+1` (3) times, never
+  more; the incident ends UNRESOLVED, not stuck OPEN or looping; every
+  attempt is recorded in `verification_results`, not silently dropped.
+  11/11 new tests green (5 `classify()`, 6 retry-orchestration
+  including the gate test).
+
 ## Pending components
 
-Phase 14 onward: verifier + retry and unresolved handling, then the
-baselines (B1, B2).
+Phase 15 onward: baselines B1 (shortest-path) and B2 (rule-based
+reactive), then the RL environment.
 
 ## Known issues
 
@@ -477,10 +506,11 @@ horizon 10s, verify settle 8s. `project.controller_backend: ryu`.
 
 ## Test status
 
-104/104 unit tests passing (`test_config.py`, `test_db.py`, `test_logging.py`,
+116/116 unit tests passing (`test_config.py`, `test_db.py`, `test_logging.py`,
 `test_of_compat.py`, `test_features.py`, `test_failure_injector.py`,
 `test_ml_rl_service.py`, `test_path_computer.py`, `test_persistence_tracker.py`,
-`test_stability_manager.py`, `test_flow_manager.py`, `test_remediation_manager.py`) under
+`test_stability_manager.py`, `test_flow_manager.py`, `test_remediation_manager.py`,
+`test_verifier.py`) under
 venv-ml (Python 3.11.9) on macOS. Phases 2-5's Mininet/Ryu gates all
 passed with real measured results in `sdn-vm`, reproduced twice
 independently for Phase 5. Phase 6's train/live feature-equality gate

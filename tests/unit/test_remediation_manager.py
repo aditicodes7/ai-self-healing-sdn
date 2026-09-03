@@ -79,7 +79,7 @@ def test_remediate_avoids_the_failing_path(db, manager, flow_ctx):
     }
 
     chosen_path, results = manager.remediate(
-        "inc-1", "s1-s3", flow_ctx, graph, link_metrics, _all_datapaths(), current_path,
+        "inc-1", "s1-s3", flow_ctx, graph, link_metrics, _all_datapaths(), [current_path],
     )
 
     assert chosen_path is not None
@@ -93,7 +93,7 @@ def test_remediate_installs_flows_on_every_switch_in_chosen_path(db, manager, fl
     datapaths = _all_datapaths()
 
     chosen_path, results = manager.remediate(
-        "inc-1", "s1-s3", flow_ctx, graph, {}, datapaths, current_path=[1, 3, 6],
+        "inc-1", "s1-s3", flow_ctx, graph, {}, datapaths, excluded_paths=[[1, 3, 6]],
     )
 
     assert len(results) == len(chosen_path)
@@ -122,7 +122,7 @@ def test_remediate_records_route_change_in_db(db, manager, flow_ctx):
     graph = _scenario_a_graph()
 
     chosen_path, _ = manager.remediate(
-        "inc-1", "s1-s3", flow_ctx, graph, {}, _all_datapaths(), current_path=[1, 3, 6],
+        "inc-1", "s1-s3", flow_ctx, graph, {}, _all_datapaths(), excluded_paths=[[1, 3, 6]],
     )
 
     row = db.query_one("SELECT * FROM route_changes WHERE incident_id = ?", ("inc-1",))
@@ -142,7 +142,7 @@ def test_no_alternate_path_is_recorded_not_silently_dropped(db, manager, flow_ct
     graph.add_edge(3, 6, ports={3: 3, 6: 2})
 
     chosen_path, results = manager.remediate(
-        "inc-1", "s1-s3", flow_ctx, graph, {}, _all_datapaths(), current_path=[1, 3, 6],
+        "inc-1", "s1-s3", flow_ctx, graph, {}, _all_datapaths(), excluded_paths=[[1, 3, 6]],
     )
 
     assert chosen_path is None
