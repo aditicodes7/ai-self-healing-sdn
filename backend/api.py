@@ -141,6 +141,21 @@ def get_telemetry(link_id: str, since: float = 0.0, limit: int = 200) -> list[di
     return _rows_to_dicts(list(reversed(rows)))
 
 
+@app.get("/api/features/{link_id}")
+def get_features(link_id: str, since: float = 0.0, limit: int = 200) -> list[dict]:
+    """Derived per-window metrics (common/features.py's utilization/
+    loss_rate/latency_ms/error_rate) -- the same values the ML pipeline
+    consumes, and the honest source for the dashboard's link-detail
+    metrics rather than re-deriving utilization from raw telemetry
+    counters client-side."""
+    with _db() as db:
+        rows = db.query(
+            "SELECT * FROM features WHERE link_id = ? AND timestamp > ? ORDER BY timestamp DESC LIMIT ?",
+            (link_id, since, limit),
+        )
+    return _rows_to_dicts(list(reversed(rows)))
+
+
 @app.get("/api/predictions/{link_id}")
 def get_predictions(link_id: str, since: float = 0.0, limit: int = 200) -> list[dict]:
     with _db() as db:
@@ -177,6 +192,18 @@ async def _event_stream(poll_interval_s: float = 1.0):
 @app.get("/api/events/stream")
 async def events_stream() -> StreamingResponse:
     return StreamingResponse(_event_stream(), media_type="text/event-stream")
+
+
+# Mounted last, deliberately -- Starlette matches routes in registration
+# order and a "/" mount matches almost any path as a prefix, so every
+# /api/* route above must be registered first or this would shadow them.
+# Phase 20's dashboard (vanilla HTML/CSS/JS, no build step) is served
+# directly from this same process rather than a second server.
+_dashboard_dir = REPO_ROOT / "dashboard"
+if _dashboard_dir.is_dir():
+    from fastapi.staticfiles import StaticFiles
+
+    app.mount("/", StaticFiles(directory=str(_dashboard_dir), html=True), name="dashboard")
 
 
 if __name__ == "__main__":

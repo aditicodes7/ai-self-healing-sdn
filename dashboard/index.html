@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI-Driven Self-Healing SDN — Live Dashboard</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+  <!-- Pinned to a version verified to exist on cdnjs (4.4.4 returns 404 there). -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">◎</span>
+      <div>
+        <h1>AI-Driven Self-Healing Network</h1>
+        <p class="subtitle">watches the network · predicts failures · reroutes traffic automatically</p>
+      </div>
+    </div>
+    <div class="topbar-status">
+      <span id="conn-dot" class="dot dot-unknown"></span>
+      <span id="conn-label">connecting…</span>
+      <span class="sep">|</span>
+      <span id="clock">--:--:--</span>
+    </div>
+  </header>
+
+  <!-- Plain-language summary of what is happening right now. -->
+  <div id="status-banner" class="status-banner banner-idle">
+    <span id="status-icon" class="status-icon">•</span>
+    <div>
+      <p id="status-headline">Checking the network…</p>
+      <p id="status-sub" class="status-sub">Connecting to the controller.</p>
+    </div>
+  </div>
+
+  <!-- The closed loop, as four stages the reader can follow. -->
+  <ol class="pipeline" id="pipeline">
+    <li class="stage" data-stage="watch">
+      <span class="stage-num">1</span>
+      <div>
+        <p class="stage-name">Watching</p>
+        <p class="stage-desc">Reading traffic counters from every switch</p>
+      </div>
+    </li>
+    <li class="stage" data-stage="predict">
+      <span class="stage-num">2</span>
+      <div>
+        <p class="stage-name">Predicting</p>
+        <p class="stage-desc">AI estimates which link is about to go bad</p>
+      </div>
+    </li>
+    <li class="stage" data-stage="reroute">
+      <span class="stage-num">3</span>
+      <div>
+        <p class="stage-name">Rerouting</p>
+        <p class="stage-desc">Picks a safer path and reprograms the switches</p>
+      </div>
+    </li>
+    <li class="stage" data-stage="verify">
+      <span class="stage-num">4</span>
+      <div>
+        <p class="stage-name">Verifying</p>
+        <p class="stage-desc">Measures whether the fix actually worked</p>
+      </div>
+    </li>
+  </ol>
+
+  <main class="layout">
+    <section class="panel panel-topology">
+      <div class="panel-head">
+        <div>
+          <h2>The network</h2>
+          <p class="panel-hint">6 switches. Traffic flows from computer H1 to H6. Click any link to inspect it.</p>
+        </div>
+        <div class="legend">
+          <span class="legend-item"><i class="swatch healthy"></i>fine</span>
+          <span class="legend-item"><i class="swatch at-risk"></i>at risk</span>
+          <span class="legend-item"><i class="swatch degraded"></i>degrading</span>
+          <span class="legend-item"><i class="swatch failed"></i>failed</span>
+          <span class="legend-item"><i class="swatch carrying"></i>carrying traffic</span>
+        </div>
+      </div>
+      <div id="cy"></div>
+      <p id="topology-empty" class="empty-state" hidden>
+        No network map yet. Start the controller against a running topology and this will fill in.
+      </p>
+    </section>
+
+    <section class="panel panel-link-detail">
+      <div class="panel-head">
+        <div>
+          <h2>Link inspector</h2>
+          <p class="panel-hint" id="link-hint">Pick a link to see its health.</p>
+        </div>
+        <select id="link-select"><option value="">choose a link…</option></select>
+      </div>
+      <div class="metric-row">
+        <div class="metric">
+          <span class="metric-label">How busy</span>
+          <span id="metric-util" class="metric-value">—</span>
+          <span class="metric-note">100% = completely full</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Delay</span>
+          <span id="metric-latency" class="metric-value">—</span>
+          <span class="metric-note">lower is better</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Packets lost</span>
+          <span id="metric-loss" class="metric-value">—</span>
+          <span class="metric-note">should be 0%</span>
+        </div>
+        <div class="metric metric-highlight">
+          <span class="metric-label">Risk of failing</span>
+          <span id="metric-prob" class="metric-value">—</span>
+          <span class="metric-note">the AI's prediction</span>
+        </div>
+      </div>
+      <p class="chart-caption" id="chart-caption">Last 5 minutes — how busy the link is, and the AI's rising concern about it.</p>
+      <div class="chart-holder">
+        <canvas id="telemetry-chart"></canvas>
+        <p id="chart-empty" class="empty-state chart-empty" hidden>
+          No readings in the last 5 minutes. This link is only charted while the controller is running and collecting telemetry.
+        </p>
+      </div>
+    </section>
+
+    <section class="panel panel-incidents">
+      <div class="panel-head">
+        <div>
+          <h2>Problems detected</h2>
+          <p class="panel-hint">Each row is one link the system decided to act on.</p>
+        </div>
+        <div class="filter-tabs">
+          <button class="tab active" data-status="">all</button>
+          <button class="tab" data-status="OPEN">active</button>
+          <button class="tab" data-status="UNRESOLVED">unfixed</button>
+        </div>
+      </div>
+      <ul id="incident-list" class="incident-list"></ul>
+      <p id="incident-empty" class="empty-state" hidden>
+        Nothing wrong so far — the network is healthy.
+      </p>
+    </section>
+
+    <section class="panel panel-incident-detail">
+      <div class="panel-head">
+        <div>
+          <h2>What the system did about it</h2>
+          <p class="panel-hint" id="incident-detail-hint">Click a problem above to see the full story.</p>
+        </div>
+        <span id="incident-detail-id" class="mono muted"></span>
+      </div>
+      <div id="incident-detail-body" class="incident-detail-body">
+        <p class="empty-state">Nothing selected yet.</p>
+      </div>
+    </section>
+
+    <section class="panel panel-events">
+      <div class="panel-head">
+        <div>
+          <h2>Live activity</h2>
+          <p class="panel-hint">Updates appear here the instant the controller does something.</p>
+        </div>
+        <button id="clear-events" class="ghost-btn">clear</button>
+      </div>
+      <ul id="event-log" class="event-log"></ul>
+      <p id="event-empty" class="empty-state">Waiting for the controller to report activity…</p>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -180,6 +180,23 @@ def test_get_telemetry_filters_by_link_and_since_and_orders_ascending(db_path):
     assert [r["timestamp"] for r in result] == [2.0, 3.0]  # ascending, > since only
 
 
+def test_get_features_filters_and_orders(db_path):
+    _seed(
+        db_path, "features",
+        [
+            {
+                "timestamp": t, "link_id": "s1-s2", "window_s": 5, "throughput": 1.0,
+                "utilization": 0.1 * t, "loss_rate": 0.0, "error_rate": 0.0, "latency_ms": 2.0,
+                "latency_is_estimate": 1, "feature_json": "{}", "data_source": "emulated_mininet",
+            }
+            for t in (1.0, 2.0, 3.0)
+        ],
+    )
+    result = api.get_features("s1-s2", since=1.5)
+    assert [r["timestamp"] for r in result] == [2.0, 3.0]
+    assert result[0]["utilization"] == pytest.approx(0.2)
+
+
 def test_get_predictions_filters_and_orders(db_path):
     _seed(
         db_path, "predictions",

@@ -33,8 +33,9 @@ Never re-ask anything recorded here.
 
 ## Current phase
 
-**Phase 19 — COMPLETE.** Backend API + SSE, live-verified against a
-running uvicorn process. Next: Phase 20 (dashboard).
+**Phase 20 — COMPLETE.** Dashboard, visually verified via real rendered
+screenshots against a running server. Next: Phase 21 (wire the closed
+loop into one live process + E2E test).
 
 ## Completed components
 
@@ -694,13 +695,53 @@ running uvicorn process. Next: Phase 20 (dashboard).
   DB) plus a 3-second `curl -N` against `/api/events/stream`, observing
   real `: keepalive` frames at the configured 1s cadence.
 
+**Phase 20 — dashboard:**
+- `dashboard/index.html` + `style.css` + `app.js` — vanilla HTML/CSS/JS,
+  no build step, cytoscape.js 3.28.1 + Chart.js 4.4.1 from cdnjs.
+  Served by `backend/api.py` itself via a StaticFiles mount at `/`
+  (registered last, since a `/` mount would otherwise shadow the
+  `/api/*` routes).
+- Written for a reader who has never seen the project: a plain-language
+  status headline ("Handling a problem on s1-s3"), the closed loop shown
+  as four labelled stages that light up as they engage, a stable
+  left-to-right network map (H1 → switches → H6 with fixed node
+  positions, not a force-directed layout that reshuffles on every
+  reload), the currently-carrying-traffic path drawn thicker and blue,
+  and the incident rendered as a chronological story rather than raw
+  DB columns. Field names are translated (`utilization` → "How busy",
+  `P2_ML_RL` → "chosen by the AI", `rl_fallback` → "AI unavailable: …").
+- `backend/api.py` gained `GET /api/features/{link_id}` — the derived
+  per-window metrics the dashboard needs. Deliberately added rather than
+  re-deriving utilization from raw counters in JavaScript, which would
+  have duplicated `common/features.py`'s formula in a second language.
+- **Three real bugs found by actually rendering the page** (headless
+  Chrome screenshots against the running server, not assumed-correct):
+  1. Chart.js was pinned to version 4.4.4, which does not exist on
+     cdnjs (404) — charts silently never rendered. Now 4.4.1, verified
+     to return 200.
+  2. `.chart-empty { display: flex }` overrode the UA stylesheet's
+     `[hidden] { display: none }`, so the "no data" message could never
+     be hidden and sat on top of a working chart. Added a global
+     `[hidden] { display: none !important; }`.
+  3. The empty-state itself: the link inspector previously showed four
+     bare dashes with no explanation when no telemetry existed in the
+     window. It now says so in words.
+- Verification note: screenshotting needs Chrome killed manually after
+  a fixed delay — an SSE connection never "finishes loading", so
+  `--virtual-time-budget` alone hangs forever. Not a page defect.
+
 ## Pending components
 
-Phase 20 onward: dashboard (vanilla HTML/CSS/JS, cytoscape.js/chart.js
-from cdnjs), E2E test (also where main_app.py/telemetry_collector.py get
-wired into one live process alongside remediation_manager -- Phases
-11-18's controller modules have all been built and tested in isolation
-so far, matching the pattern already established in Phases 11-15).
+Phase 21 onward: **wire the closed loop into one live process** — this
+is larger than "an E2E test". Phases 11-18's controller modules
+(`persistence_tracker`, `stability_manager`, `path_computer`,
+`flow_manager`, `remediation_manager`, `verifier`, `rl_client`) are all
+built and unit-tested but are currently instantiated ONLY in tests. The
+live chain today runs telemetry → features → ML prediction and stops
+there. Assembling prediction → persistence → stability → remediation →
+flow install → verification into a running Ryu app is the real work of
+Phase 21, and only after that do the Phase 22 experiments have a whole
+system to measure.
 
 ## Known issues
 
@@ -716,7 +757,7 @@ horizon 10s, verify settle 8s. `project.controller_backend: ryu`.
 
 ## Test status
 
-213/213 unit tests passing (`test_config.py`, `test_db.py`, `test_logging.py`,
+214/214 unit tests passing (`test_config.py`, `test_db.py`, `test_logging.py`,
 `test_of_compat.py`, `test_features.py`, `test_failure_injector.py`,
 `test_ml_rl_service.py`, `test_path_computer.py`, `test_persistence_tracker.py`,
 `test_stability_manager.py`, `test_flow_manager.py`, `test_remediation_manager.py`,
