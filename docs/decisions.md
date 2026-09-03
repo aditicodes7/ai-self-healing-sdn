@@ -70,6 +70,23 @@ executing the plan.
   Python needed `python3-yaml` (apt) added for topology-spec parsing;
   `iperf3` (apt) provides the CLI the approved stack specifies for
   throughput measurement.
+- 2026-09-03: `controller/flow_manager.py`'s `incident_cookie()` produced a
+  full unsigned 64-bit hash, but SQLite's `INTEGER` column is signed
+  64-bit -- confirmed on a live VM run: an `OverflowError` while logging
+  hop 1's FlowMod aborted `install_path()`'s loop entirely (no per-hop
+  exception isolation existed), leaving a 4-switch path with a flow
+  installed on only its FIRST switch despite every hop reporting
+  "INSTALLED". Fixed two ways: (1) `incident_cookie()` masks to 63 bits
+  (`& 0x7FFFFFFFFFFFFFFF`), trivial entropy loss, guaranteed to fit;
+  (2) `install_path()` now isolates each hop's install-and-log in its
+  own try/except, so a failure on one hop can never prevent the rest --
+  defense in depth, since the specific overflow is fixed but the "one
+  hop's failure cascades to all others" fragility was the more dangerous
+  half of the bug. Re-verified live: all 4 hops of a real remediated
+  path ([1,4,5,6]) now show correct `ovs-ofctl dump-flows` entries with
+  the same cookie, confirming the fix end-to-end, not just in unit
+  tests. Regression tests added (2000-iteration cookie-range sweep, plus
+  a flaky-logger test simulating the exact original failure).
 - 2026-09-03: `service/ml_rl_service.py` (Phase 10's ML inference
   service, and later Phase 18's RL policy service) must be reachable via
   `localhost` HTTP from the Ryu controller per the approved architecture

@@ -33,9 +33,9 @@ Never re-ask anything recorded here.
 
 ## Current phase
 
-**Phase 12 — COMPLETE.** Persistence tracker + stability manager
-(oscillation unit test green). Next: Phase 13 (flow manager + remediation
-manager).
+**Phase 13 — COMPLETE.** Flow manager + remediation manager (rules
+verifiable via `ovs-ofctl dump-flows`). Next: Phase 14 (verifier + retry
+and unresolved handling).
 
 ## Completed components
 
@@ -423,9 +423,45 @@ manager).
   genuinely elapses, a still-qualifying signal is allowed to reroute
   again. 19/19 new tests green (9 persistence, 10 stability/oscillation).
 
+**Phase 13 — flow manager + remediation manager:**
+- `controller/flow_manager.py` — `install_path()` sends a real OFPFlowMod
+  + OFPBarrierRequest per hop (match: `in_port`, `eth_type=0x0800`,
+  `ipv4_src`, `ipv4_dst`; priority `flow.priority_remediated`;
+  `idle_timeout`/`hard_timeout` from config; cookie = `incident_cookie()`,
+  a deterministic hash of the incident id), and logs every attempt —
+  success or failure — to `flow_rules`. Deliberately takes fully-resolved
+  `PathHop` (dpid + in_port + out_port) rather than a bare switch list:
+  resolving ports is the caller's job, not this primitive's.
+- `controller/remediation_manager.py` — `remediate()` ranks candidate
+  paths (`path_computer.py`), excludes the currently-failing path, and
+  installs the best alternative; resolves host-facing ports at the two
+  path ends from a caller-supplied `FlowContext` and inter-switch ports
+  from the topology graph. Every decision — including "no alternate
+  path available" — is recorded in `route_changes`.
+- **Found and fixed a serious real bug via live VM verification, not
+  just unit tests:** `incident_cookie()`'s full unsigned-64-bit hash
+  overflows SQLite's signed-64-bit `INTEGER` column about half the time;
+  with no per-hop exception isolation, that `OverflowError` aborted
+  `install_path()`'s entire loop after hop 1 — a 4-switch path silently
+  ended up with a flow on only its FIRST switch, while every hop still
+  reported "INSTALLED". Fixed by masking the cookie to 63 bits AND
+  isolating each hop's install-and-log in its own try/except (defense
+  in depth — the cascade-on-one-hop-failure fragility was the more
+  dangerous half of the bug). Re-verified live after the fix: all 4 hops
+  now correctly flowed. 2000-iteration regression test added for the
+  cookie range, plus a test simulating the exact original failure mode.
+- **Gate result:** real `ovs-ofctl dump-flows` output for a live
+  h1->h6 remediation (forced away from a congested s1-s3-s6, choosing
+  s1-s4-s5-s6): all 4 switches show correct, consistent flow entries —
+  same cookie throughout, `priority=200`, `hard_timeout=300`, matching
+  `nw_src=10.0.0.1,nw_dst=10.0.0.6`, and a coherent hop-by-hop action
+  chain (s1 in:1→out:3, s4 in:2→out:3, s5 in:2→out:3, s6 in:3→out:1).
+  8/8 new flow_manager tests + 5/5 new remediation_manager tests green.
+
 ## Pending components
 
-Phase 13 onward: flow manager + remediation manager, then the verifier.
+Phase 14 onward: verifier + retry and unresolved handling, then the
+baselines (B1, B2).
 
 ## Known issues
 
@@ -441,10 +477,10 @@ horizon 10s, verify settle 8s. `project.controller_backend: ryu`.
 
 ## Test status
 
-89/89 unit tests passing (`test_config.py`, `test_db.py`, `test_logging.py`,
+104/104 unit tests passing (`test_config.py`, `test_db.py`, `test_logging.py`,
 `test_of_compat.py`, `test_features.py`, `test_failure_injector.py`,
 `test_ml_rl_service.py`, `test_path_computer.py`, `test_persistence_tracker.py`,
-`test_stability_manager.py`) under
+`test_stability_manager.py`, `test_flow_manager.py`, `test_remediation_manager.py`) under
 venv-ml (Python 3.11.9) on macOS. Phases 2-5's Mininet/Ryu gates all
 passed with real measured results in `sdn-vm`, reproduced twice
 independently for Phase 5. Phase 6's train/live feature-equality gate
