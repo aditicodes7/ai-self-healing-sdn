@@ -33,8 +33,9 @@ Never re-ask anything recorded here.
 
 ## Current phase
 
-**Phase 11 — COMPLETE.** Path computation, k-shortest + weighted cost.
-Next: Phase 12 (persistence tracker + stability manager).
+**Phase 12 — COMPLETE.** Persistence tracker + stability manager
+(oscillation unit test green). Next: Phase 13 (flow manager + remediation
+manager).
 
 ## Completed components
 
@@ -393,10 +394,38 @@ Next: Phase 12 (persistence tracker + stability manager).
   h1->h6 (s1->s6) really does have 4 distinct loop-free candidates, not
   just that the topology supports them in principle.
 
+**Phase 12 — persistence tracker + stability manager:**
+- `controller/persistence_tracker.py` — `PersistenceTracker` implements
+  decision-logic items 1-3: a per-link sliding window (deque,
+  maxlen=`persistence.window`) of recent P(degradation) readings.
+  `evaluate()` checks the LATEST reading against
+  `persistence.uncertainty_band` first (abstention overrides everything
+  else), then counts how many of the window's readings are >= threshold,
+  requiring both the latest reading and the count to qualify
+  (`persistence.consecutive`) — "3 of the last 4" per the literal spec
+  wording. Verified independent per-link tracking, window eviction, and
+  the `consecutive > window` misconfiguration rejected at construction.
+- `controller/stability_manager.py` — `StabilityManager` implements
+  items 4-6: cooldown, minimum improvement (a fraction of current path
+  cost), and route-hold, checked against a per-flow last-change
+  timestamp. `evaluate()` returns a `Decision(change, reason)` for
+  EVERY call, including negatives — never raises or skips silently, so
+  a caller logging every returned Decision satisfies the spec's logging
+  requirement. Both pure Python, no framework dependency; verified
+  importing under both venv-ml and the real venv-ctrl.
+- **Gate result — the oscillation test:** simulates a flow whose
+  degradation signal repeatedly re-qualifies (persistent + real
+  improvement available) every 5s for 30s straight — exactly what would
+  flap a naive controller. Only the FIRST evaluation changes the route;
+  all 5 subsequent ones are refused (cooldown, then route-hold), each
+  with a real logged reason, not a silent no-op. Confirmed this is
+  temporary suppression, not a permanent lockout: once `route_hold_s`
+  genuinely elapses, a still-qualifying signal is allowed to reroute
+  again. 19/19 new tests green (9 persistence, 10 stability/oscillation).
+
 ## Pending components
 
-Phase 12 onward: persistence tracker + stability manager, then flow
-manager + remediation manager.
+Phase 13 onward: flow manager + remediation manager, then the verifier.
 
 ## Known issues
 
@@ -412,9 +441,10 @@ horizon 10s, verify settle 8s. `project.controller_backend: ryu`.
 
 ## Test status
 
-68/68 unit tests passing (`test_config.py`, `test_db.py`, `test_logging.py`,
+89/89 unit tests passing (`test_config.py`, `test_db.py`, `test_logging.py`,
 `test_of_compat.py`, `test_features.py`, `test_failure_injector.py`,
-`test_ml_rl_service.py`, `test_path_computer.py`) under
+`test_ml_rl_service.py`, `test_path_computer.py`, `test_persistence_tracker.py`,
+`test_stability_manager.py`) under
 venv-ml (Python 3.11.9) on macOS. Phases 2-5's Mininet/Ryu gates all
 passed with real measured results in `sdn-vm`, reproduced twice
 independently for Phase 5. Phase 6's train/live feature-equality gate
