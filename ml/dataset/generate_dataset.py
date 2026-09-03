@@ -43,7 +43,7 @@ from common.config_loader import load_config  # noqa: E402
 from common.features import RawWindow, compute_base_metrics, compute_feature_vector  # noqa: E402
 from common.schema import DataSource  # noqa: E402
 from ml.dataset.label_rules import label_window  # noqa: E402
-from network.failure_injector import FAULT_TYPES, FailureInjector  # noqa: E402
+from network.failure_injector import DEFAULT_RAMP_IN_S, FAULT_TYPES, FailureInjector  # noqa: E402
 
 DEFAULT_RUN_DURATION_S = 600.0  # ">=10 minutes" per the phase plan
 BACKGROUND_TRAFFIC_PAIRS = [("h1", "h6"), ("h2", "h5"), ("h3", "h4")]
@@ -68,7 +68,12 @@ def _build_fault_schedule(rng: random.Random, links: list[tuple[str, str]], dura
         fault_type = rng.choice(FAULT_TYPES)
         link = rng.choice(links)
         fault_duration_s = rng.uniform(15, 40)
-        elapsed += fault_duration_s
+        # gradual_degradation gets a longer, steppier ramp so it reads as
+        # distinctly more "gradual" than the other fault types' shared
+        # pre-fault ramp (see network/failure_injector.py).
+        ramp_in_s = rng.uniform(18, 25) if fault_type == "gradual_degradation" else DEFAULT_RAMP_IN_S
+        ramp_steps = 8 if fault_type == "gradual_degradation" else 4
+        elapsed += fault_duration_s + ramp_in_s
 
         params: dict = {}
         if fault_type == "congestion":
@@ -81,7 +86,6 @@ def _build_fault_schedule(rng: random.Random, links: list[tuple[str, str]], dura
             params = {"corrupt_pct": rng.uniform(5, 15)}
         elif fault_type == "gradual_degradation":
             params = {
-                "steps": 5,
                 "target_bw_fraction": rng.uniform(0.05, 0.2),
                 "target_delay_ms": rng.uniform(30, 60),
             }
@@ -92,6 +96,8 @@ def _build_fault_schedule(rng: random.Random, links: list[tuple[str, str]], dura
                 "link": link,
                 "fault_type": fault_type,
                 "fault_duration_s": fault_duration_s,
+                "ramp_in_s": ramp_in_s,
+                "ramp_steps": ramp_steps,
                 "params": params,
             }
         )
@@ -150,7 +156,10 @@ def _run_one_scenario(
             if event["link"] is None:
                 continue
             sw_a, sw_b = event["link"]
-            injector.inject(sw_a, sw_b, event["fault_type"], event["fault_duration_s"], **event["params"])
+            injector.inject(
+                sw_a, sw_b, event["fault_type"], event["fault_duration_s"],
+                ramp_in_s=event["ramp_in_s"], ramp_steps=event["ramp_steps"], **event["params"],
+            )
     finally:
         run_end_ts = time.time()
         net.stop()

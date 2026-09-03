@@ -124,7 +124,12 @@ separately per fault type) should be expected to be no better than what
 those indirect signals allow -- not artificially inflated by adding a
 fabricated error-count feature to compensate.
 
-## ML lead-time prediction: near-chance performance, and why (Phase 9)
+## ML lead-time prediction: near-chance performance, root-caused and fixed (Phase 9)
+
+**Resolved 2026-09-03 -- see the update at the end of this entry for the
+fix and the real post-fix numbers.** The original finding is kept below
+in full because the diagnosis is what led to the fix; deleting it would
+hide the reasoning that produced a genuinely better model.
 
 `ml/train_model.py` trained all three approved candidates
 (HistGradientBoosting, RandomForest, LogisticRegression) on the real
@@ -185,6 +190,58 @@ implemented in Phase 9 -- doing so would change the dataset and require
 regenerating it (another ~90 minutes of Mininet runtime), which is
 recorded here as follow-up work rather than undertaken silently to
 produce a better-looking number.
+
+### Update (2026-09-03): option (1) implemented, dataset regenerated, real improvement
+
+Option (1) above was implemented: `network/failure_injector.py` now ramps
+every fault type toward its target intensity over `ramp_in_s` (12s for
+most types, 18-25s for `gradual_degradation`) BEFORE logging
+`fault_start`, instead of jumping there instantly (see
+`docs/decisions.md`, 2026-09-02/03). The full 8-seed, ~600s-per-run
+dataset was regenerated with this change (`results/tables/
+dataset_summary.json`: 39,233 windows, 640 positive, 38,593 negative,
+1.63%) and `ml/train_model.py` re-run on it.
+
+**Verified the ramp produces real signal before retraining** (not
+assumed): queried `features.latency_ms` for a `high_latency` fault on
+s1-s4 (seed 1) in the 16s before its `fault_start` -- values climb from
+~6-10ms baseline to ~29-32ms right at onset, a clear, real upward trend,
+not noise.
+
+**New results, real and computed the same way as before (train seeds
+1-6, test seeds 7-8, same 22 zero-variance features excluded):**
+
+| model | ROC-AUC | PR-AUC | precision/recall/F1 @ threshold=0.75 |
+|---|---|---|---|
+| histgradientboosting | 0.836 | 0.370 | 0.426 / 0.362 / 0.392 |
+| randomforest (chosen) | 0.828 | 0.381 | 0.837 / 0.225 / 0.355 |
+| logisticregression_baseline | 0.565 | 0.063 | 0.184 / 0.113 / 0.140 |
+
+Test set: 9,794 rows, 160 positive (1.63%). RandomForest's confusion
+matrix at threshold=0.75: `[[9627, 7], [124, 36]]` -- 36 true positives,
+only 7 false positives (83.7% precision when it does predict an
+upcoming fault; still misses ~78% of them at this fixed threshold,
+recall 22.5%). HistGradientBoosting trades some precision for more
+balanced recall (36.2%).
+
+ROC-AUC roughly 0.52-0.56 -> 0.83-0.84; PR-AUC roughly 0.02-0.024 -> 0.37-0.38
+(15-18x). The permutation feature importance for the chosen model
+(`results/figures/ml_feature_importance.png`) confirms WHY: the top
+three features are `latency_ms_slope_10`, `latency_ms_slope_5`, and
+`latency_ms_mean_3` -- the model is learning the ramp trend the fix
+introduced, not some unrelated artifact. This is a coherent result:
+predictive power came specifically from giving the anticipation window
+genuine precursor signal, exactly as diagnosed above.
+
+**Still worth stating plainly:** this dataset's positive-class precursor
+signal is, by construction, a designed ramp -- a real methodological
+choice recorded here, not a claim that real-world link failures always
+ramp this cleanly or this fast. `logisticregression_baseline` staying
+weak (ROC-AUC 0.565) even with the ramp signal present is a useful
+negative result too: the relationship between the engineered features
+and the label is not simply linear, which is part of why
+HistGradientBoosting/RandomForest were included as candidates rather
+than shipping only a linear baseline.
 
 Further entries (RL simulator calibration, queue-occupancy availability,
 etc.) are added as those phases are reached.

@@ -70,6 +70,27 @@ executing the plan.
   Python needed `python3-yaml` (apt) added for topology-spec parsing;
   `iperf3` (apt) provides the CLI the approved stack specifies for
   throughput measurement.
+- 2026-09-02/03: Phase 9's near-chance ML result (ROC-AUC ~0.52-0.56) was
+  traced to `failure_injector.py` faults being instantaneous step
+  functions with no pre-fault precursor -- the anticipation window (the
+  label's positive class) was statistically identical to any healthy
+  window. Fixed by giving every fault type a genuine ramp toward its
+  target intensity (`ramp_in_s`, default 12s; 18-25s for
+  `gradual_degradation`) BEFORE `fault_start` is logged, via a new
+  `_ramp_to_target()` helper shared across all 6 fault types (replacing
+  the old fault-type-specific `_apply_instant_fault`/
+  `_apply_gradual_degradation` split with one unified ramp-then-hold
+  design). `fault_start` still marks arrival at full intensity, so
+  `ml/dataset/label_rules.py`'s labeling semantics are unchanged. The
+  full 8-seed dataset was regenerated (~2 hours wall-clock this time,
+  including an unplanned ~10.5-hour gap in seed 4 from the host laptop
+  sleeping overnight -- confirmed harmless: only `run_start_ts`/
+  `run_end_ts` timestamps were affected, not the fault schedule or
+  labeled counts, which stayed consistent with other seeds). Retraining
+  on the ramped dataset raised ROC-AUC to 0.83-0.84 and PR-AUC 15-18x;
+  permutation importance confirmed the model is using the engineered
+  ramp trend (`latency_ms_slope_10`/`slope_5`), not an unrelated
+  artifact. Full before/after numbers in `docs/limitations.md`.
 - 2026-09-02: Phase 9 ML training crashed on `HistGradientBoostingClassifier`
   ("window shape cannot be larger than input array shape") because
   `latency_ms` was 100% NaN across the whole Phase 8 dataset -- a real bug

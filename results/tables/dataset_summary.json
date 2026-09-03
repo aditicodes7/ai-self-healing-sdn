@@ -12,92 +12,91 @@
     8
   ],
   "target_run_duration_s": 600.0,
-  "total_windows": 39248,
-  "total_positive": 760,
-  "total_negative": 38488,
-  "positive_fraction": 0.01936404402772116,
+  "total_windows": 39233,
+  "total_positive": 640,
+  "total_negative": 38593,
+  "positive_fraction": 0.01631279789972727,
   "runs": [
     {
       "seed": 1,
-      "run_start_ts": 1788328957.3559973,
-      "run_end_ts": 1788329572.051494,
-      "duration_s": 614.6954965591431,
-      "num_fault_events": 9,
-      "windows_written": 4896,
-      "positive": 90,
-      "negative": 4806
+      "run_start_ts": 1788370035.9990716,
+      "run_end_ts": 1788370639.85429,
+      "duration_s": 603.855218410492,
+      "num_fault_events": 8,
+      "windows_written": 4816,
+      "positive": 80,
+      "negative": 4736
     },
     {
       "seed": 2,
-      "run_start_ts": 1788329576.788477,
-      "run_end_ts": 1788330221.0126097,
-      "duration_s": 644.2241327762604,
-      "num_fault_events": 9,
-      "windows_written": 5072,
-      "positive": 90,
-      "negative": 4982
+      "run_start_ts": 1788370645.0174432,
+      "run_end_ts": 1788371267.958167,
+      "duration_s": 622.9407238960266,
+      "num_fault_events": 8,
+      "windows_written": 4898,
+      "positive": 80,
+      "negative": 4818
     },
     {
       "seed": 3,
-      "run_start_ts": 1788330226.0246286,
-      "run_end_ts": 1788330847.8081331,
-      "duration_s": 621.783504486084,
-      "num_fault_events": 9,
-      "windows_written": 4934,
-      "positive": 90,
-      "negative": 4844
+      "run_start_ts": 1788371273.873888,
+      "run_end_ts": 1788371897.869594,
+      "duration_s": 623.9957060813904,
+      "num_fault_events": 8,
+      "windows_written": 4948,
+      "positive": 80,
+      "negative": 4868
     },
     {
       "seed": 4,
-      "run_start_ts": 1788330852.4077356,
-      "run_end_ts": 1788331464.7632492,
-      "duration_s": 612.3555135726929,
-      "num_fault_events": 10,
-      "windows_written": 4880,
-      "positive": 100,
-      "negative": 4780
+      "run_start_ts": 1788371903.399357,
+      "run_end_ts": 1788409914.1588802,
+      "duration_s": 38010.759523153305,
+      "num_fault_events": 9,
+      "windows_written": 4898,
+      "positive": 90,
+      "negative": 4808
     },
     {
       "seed": 5,
-      "run_start_ts": 1788331469.228264,
-      "run_end_ts": 1788332100.24929,
-      "duration_s": 631.0210258960724,
-      "num_fault_events": 9,
-      "windows_written": 4968,
-      "positive": 90,
-      "negative": 4878
+      "run_start_ts": 1788409919.5209453,
+      "run_end_ts": 1788410526.6781933,
+      "duration_s": 607.1572480201721,
+      "num_fault_events": 7,
+      "windows_written": 4775,
+      "positive": 70,
+      "negative": 4705
     },
     {
       "seed": 6,
-      "run_start_ts": 1788332104.8396556,
-      "run_end_ts": 1788332710.4385254,
-      "duration_s": 605.5988698005676,
-      "num_fault_events": 10,
-      "windows_written": 4768,
-      "positive": 100,
-      "negative": 4668
+      "run_start_ts": 1788410531.7536674,
+      "run_end_ts": 1788411175.2951045,
+      "duration_s": 643.5414371490479,
+      "num_fault_events": 8,
+      "windows_written": 5104,
+      "positive": 80,
+      "negative": 5024
     },
     {
       "seed": 7,
-      "run_start_ts": 1788332714.851742,
-      "run_end_ts": 1788333326.9712903,
-      "duration_s": 612.1195483207703,
-      "num_fault_events": 10,
-      "windows_written": 4834,
-      "positive": 100,
-      "negative": 4734
+      "run_start_ts": 1788411180.4607768,
+      "run_end_ts": 1788411793.7044723,
+      "duration_s": 613.2436954975128,
+      "num_fault_events": 8,
+      "windows_written": 4850,
+      "positive": 80,
+      "negative": 4770
     },
     {
       "seed": 8,
-      "run_start_ts": 1788333332.3309696,
-      "run_end_ts": 1788333946.9975429,
-      "duration_s": 614.6665732860565,
-      "num_fault_events": 10,
-      "windows_written": 4896,
-      "positive": 100,
-      "negative": 4796
+      "run_start_ts": 1788411799.2059932,
+      "run_end_ts": 1788415083.361161,
+      "duration_s": 3284.1551678180695,
+      "num_fault_events": 8,
+      "windows_written": 4944,
+      "positive": 80,
+      "negative": 4864
     }
   ],
-  "data_source": "emulated_mininet",
-  "note": "Re-extracted 2026-09-02 with the latency_ms merge fix (see docs/decisions.md); underlying Mininet telemetry unchanged, same 8 runs."
+  "data_source": "emulated_mininet"
 }
