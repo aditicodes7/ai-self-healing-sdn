@@ -33,9 +33,9 @@ Never re-ask anything recorded here.
 
 ## Current phase
 
-**Phase 17 — COMPLETE.** RL training + evaluation (real measured
-results, learned policy beats all 3 baselines). Next: Phase 18 (RL
-integration into the controller).
+**Phase 18 — COMPLETE.** RL integration into the controller, with a
+tested safety-gate fallback to the weighted-cost heuristic. Next: Phase
+19 (backend API + SSE).
 
 ## Completed components
 
@@ -616,12 +616,59 @@ integration into the controller).
   `actions.py`/`state.py` tests, 6 new `evaluate_rl.py` tests — all
   green (187/187 total, see Test status).
 
+**Phase 18 — RL integration into the controller:**
+- `service/ml_rl_service.py` — added `POST /infer/route`, loaded
+  alongside the degradation model at startup (`_load_rl_policy()` loads
+  `models/routing_policy.zip` via `sb3_contrib.MaskablePPO.load`).
+  Reuses `rl/env/state.py`'s `build_state()` and `rl/env/actions.py`'s
+  `get_action_mask()` -- the SAME functions training used -- so a live
+  decision's state representation is identical to what the policy was
+  trained on (Phase 6's train/live-equality principle, applied to RL).
+  Returns 503 (never a fabricated action) when the policy isn't loaded;
+  422 if a malformed request produces a non-finite/wrong-shape state
+  vector.
+- `controller/rl_client.py` — `RLClient.select_route()`, mirroring
+  `inference_client.py`'s exact safety-gate contract: connection error,
+  timeout, non-200, malformed body, or an out-of-range action index all
+  return `None`, never a fabricated route. Runs under venv-ctrl only
+  (needs `requests`, which venv-ml deliberately doesn't install -- see
+  docs/decisions.md 2026-09-03 on the resulting `TYPE_CHECKING` import
+  guard needed in remediation_manager.py).
+- `controller/remediation_manager.py` — `remediate()` now tries RL
+  selection first when `rl_client` is configured (optional constructor
+  arg, default `None` -- every pre-Phase-18 caller/test is unaffected).
+  The weighted-cost heuristic ranking is ALWAYS computed regardless, so
+  it's immediately ready as the fallback with no extra round-trip.
+  Falls back to it, logging `rl_fallback=1` + a specific
+  `rl_fallback_reason`, on: `rl_service_unavailable` (client returned
+  None), `rl_selected_no_reroute` (RL said "hold" when a change was
+  already mandated by the caller), `rl_selected_excluded_path` (RL's
+  path is the currently-failing path or one already tried this
+  incident), `rl_selected_invalid_path` (defense in depth -- RL's
+  resolved path isn't even among the real candidates). `selector` on
+  the `route_changes` row is `P2_ML_RL` only when an RL-selected path
+  was actually used, `P1_ML_HEURISTIC` on any fallback -- matching
+  `common/schema.py`'s `RouteSelector` enum (`P2_ML_RL` existed since
+  Phase 1's schema but was unused until now).
+- `database/schema.sql` — `route_changes` gained `rl_fallback INTEGER`
+  and `rl_fallback_reason TEXT`, so fallback frequency/cause is
+  queryable for the Phase 22 comparison study, not just log-visible.
+  Safe schema edit (`CREATE TABLE IF NOT EXISTS`, no migration
+  framework, no real deployment data yet predates this change).
+- 12 new tests across `test_ml_rl_service.py` (real loaded policy, not
+  mocked) and `test_remediation_manager.py` (a duck-typed `FakeRLClient`
+  stand-in, since the real `RLClient` can't be imported under venv-ml --
+  same `requests` constraint as above). Full RL-selects-path,
+  service-down, hold-fallback, excluded-path-fallback, invalid-path
+  -fallback, and RL-disabled-by-default cases all covered.
+
 ## Pending components
 
-Phase 18 onward: RL integration into the controller (live reroute
-chosen by the policy, logged; safety gate falls back to the weighted
--cost heuristic on service-down/invalid-index/timeout, logging
-`rl_fallback=true`).
+Phase 19 onward: backend API + SSE, dashboard, E2E test (this is also
+where main_app.py/telemetry_collector.py get wired into one live
+process alongside remediation_manager -- Phases 11-18's controller
+modules have all been built and tested in isolation so far, matching
+the pattern already established in Phases 11-15).
 
 ## Known issues
 
@@ -637,7 +684,7 @@ horizon 10s, verify settle 8s. `project.controller_backend: ryu`.
 
 ## Test status
 
-187/187 unit tests passing (`test_config.py`, `test_db.py`, `test_logging.py`,
+199/199 unit tests passing (`test_config.py`, `test_db.py`, `test_logging.py`,
 `test_of_compat.py`, `test_features.py`, `test_failure_injector.py`,
 `test_ml_rl_service.py`, `test_path_computer.py`, `test_persistence_tracker.py`,
 `test_stability_manager.py`, `test_flow_manager.py`, `test_remediation_manager.py`,
@@ -669,7 +716,14 @@ MaskablePPO training run (189.7s wall clock) converged to a stable
 episode-reward plateau, and a real 50-episode seeded evaluation showed
 the learned policy at 100% recovery success vs 0% for both
 `always_shortest_path` and `always_least_utilized` baselines — see
-results/tables/rl_training_summary.json and rl_evaluation.json.
+results/tables/rl_training_summary.json and rl_evaluation.json. Phase
+18's RL-integration logic is fully unit-tested (all 6 selection/fallback
+branches); `controller/rl_client.py` itself has no unit test file, by
+the same necessity as `inference_client.py` (Phase 10) — both need
+`requests`, which only exists in venv-ctrl inside the VM, so real
+end-to-end HTTP behavior against a live `ml_rl_service.py` is a live-VM
+verification, not yet performed (deferred to Phase 21's E2E test /
+whenever main_app.py first wires RemediationManager in for real).
 
 ## Experiment status
 

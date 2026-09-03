@@ -179,6 +179,18 @@ executing the plan.
   copy rather than a live mount — keeping venv location decoupled from
   however the repo got onto the VM avoids re-hitting this class of problem
   if a live mount is revisited later. See `scripts/setup_env.sh`.
+- 2026-09-03: Phase 18's `controller/rl_client.py` imports `requests`,
+  which requirements-ml.txt deliberately does not install (it's
+  ml_rl_service.py's own HTTP client dependency, never needed by the
+  FastAPI/uvicorn *server* side). Importing it at module level in
+  `controller/remediation_manager.py` (which HAS venv-ml-run unit tests,
+  unlike inference_client.py which has none) broke those tests outright.
+  Fixed by moving the import under `if TYPE_CHECKING:` -- safe because
+  `from __future__ import annotations` (already present) makes every
+  type hint in that file lazy, so the import was never actually needed
+  at runtime, only for type checkers. Any future controller/ module that
+  both (a) needs `requests` and (b) wants venv-ml-run unit tests must use
+  this same pattern.
 - 2026-09-03: Phase 17 RL env (rl/env/network_env.py) does not call the
   real trained ML classifier (service/ml_rl_service.py) inside simulated
   training steps to produce the state's degradation-probability feature.

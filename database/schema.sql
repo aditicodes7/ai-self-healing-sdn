@@ -86,15 +86,24 @@ CREATE TABLE IF NOT EXISTS incidents (
 
 -- Every reroute decision considered, including negatives (Decision.change=False).
 CREATE TABLE IF NOT EXISTS route_changes (
-    id               INTEGER PRIMARY KEY AUTOINCREMENT,
-    incident_id      TEXT,
-    timestamp        REAL NOT NULL,
-    flow_key         TEXT NOT NULL,
-    old_path         TEXT,
-    new_path         TEXT,
-    decision_reason  TEXT NOT NULL,
-    changed          INTEGER NOT NULL DEFAULT 0,
-    selector         TEXT NOT NULL,
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    incident_id        TEXT,
+    timestamp          REAL NOT NULL,
+    flow_key           TEXT NOT NULL,
+    old_path           TEXT,
+    new_path           TEXT,
+    decision_reason    TEXT NOT NULL,
+    changed            INTEGER NOT NULL DEFAULT 0,
+    selector           TEXT NOT NULL,
+    -- Phase 18: set when path selection was attempted via the RL policy
+    -- (service/ml_rl_service.py's POST /infer/route) but fell back to the
+    -- weighted-cost heuristic (rank_candidate_paths) instead -- service
+    -- down, timeout, or an invalid/unusable action. selector still records
+    -- which system actually chose new_path; these two columns record
+    -- *why* RL wasn't used, for every call, not just the failures anyone
+    -- happens to notice.
+    rl_fallback        INTEGER NOT NULL DEFAULT 0,
+    rl_fallback_reason TEXT,
     FOREIGN KEY (incident_id) REFERENCES incidents (incident_id)
 );
 

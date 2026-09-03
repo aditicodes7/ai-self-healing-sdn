@@ -133,6 +133,157 @@ def test_remediate_records_route_change_in_db(db, manager, flow_ctx):
     assert row["new_path"] == ",".join(f"s{d}" for d in chosen_path)
 
 
+class FakeRLDecision:
+    """Duck-typed stand-in for controller.rl_client.RouteDecision -- that
+    real class can't be imported under venv-ml (it lives in a module that
+    imports `requests`, which venv-ml deliberately doesn't install; see
+    docs/decisions.md 2026-09-03). RemediationManager only ever reads
+    .action/.chosen_path/.policy_version off whatever select_route()
+    returns, so a matching plain object is a faithful substitute."""
+
+    def __init__(self, action, chosen_path, policy_version="test-policy"):
+        self.action = action
+        self.chosen_path = chosen_path
+        self.policy_version = policy_version
+
+
+class FakeRLClient:
+    def __init__(self, decision):
+        self.decision = decision
+        self.calls = []
+
+    def select_route(self, src_dpid, dst_dpid, candidates, link_metrics, degradation_probs,
+                      degraded_link_id, current_path, time_since_last_reroute_s,
+                      global_mean_utilization, global_max_utilization):
+        self.calls.append(
+            {
+                "src_dpid": src_dpid, "dst_dpid": dst_dpid, "candidates": candidates,
+                "current_path": current_path, "degraded_link_id": degraded_link_id,
+            }
+        )
+        return self.decision
+
+
+@pytest.fixture
+def manager_with_rl(db, flow_manager):
+    def _make(rl_client):
+        return RemediationManager(
+            db, flow_manager, k_shortest=4,
+            weight_utilization=10.0, weight_latency=1.0, weight_loss=2.0, weight_hop_count=0.1,
+            rl_client=rl_client,
+        )
+
+    return _make
+
+
+def test_remediate_uses_rl_selected_path_when_valid(db, manager_with_rl, flow_ctx):
+    _open_incident(db, "inc-1", "s1-s3")
+    graph = _scenario_a_graph()
+    current_path = [1, 3, 6]
+    rl_client = FakeRLClient(FakeRLDecision(action=2, chosen_path=[1, 4, 5, 6]))
+    manager = manager_with_rl(rl_client)
+
+    chosen_path, results = manager.remediate(
+        "inc-1", "s1-s3", flow_ctx, graph, {}, _all_datapaths(), [current_path],
+    )
+
+    assert chosen_path == [1, 4, 5, 6]
+    assert all(r.result.value == "INSTALLED" for r in results)
+    row = db.query_one("SELECT * FROM route_changes WHERE incident_id = ?", ("inc-1",))
+    assert row["selector"] == "P2_ML_RL"
+    assert row["rl_fallback"] == 0
+    assert row["rl_fallback_reason"] is None
+    assert len(rl_client.calls) == 1
+
+
+def test_remediate_falls_back_when_rl_client_returns_none(db, manager_with_rl, flow_ctx):
+    _open_incident(db, "inc-1", "s1-s3")
+    graph = _scenario_a_graph()
+    current_path = [1, 3, 6]
+    rl_client = FakeRLClient(None)
+    manager = manager_with_rl(rl_client)
+
+    chosen_path, results = manager.remediate(
+        "inc-1", "s1-s3", flow_ctx, graph, {}, _all_datapaths(), [current_path],
+    )
+
+    assert chosen_path is not None
+    row = db.query_one("SELECT * FROM route_changes WHERE incident_id = ?", ("inc-1",))
+    assert row["selector"] == "P1_ML_HEURISTIC"
+    assert row["rl_fallback"] == 1
+    assert row["rl_fallback_reason"] == "rl_service_unavailable"
+
+
+def test_remediate_falls_back_when_rl_selects_hold(db, manager_with_rl, flow_ctx):
+    _open_incident(db, "inc-1", "s1-s3")
+    graph = _scenario_a_graph()
+    current_path = [1, 3, 6]
+    rl_client = FakeRLClient(FakeRLDecision(action=0, chosen_path=current_path))
+    manager = manager_with_rl(rl_client)
+
+    chosen_path, results = manager.remediate(
+        "inc-1", "s1-s3", flow_ctx, graph, {}, _all_datapaths(), [current_path],
+    )
+
+    assert chosen_path is not None
+    assert chosen_path != current_path
+    row = db.query_one("SELECT * FROM route_changes WHERE incident_id = ?", ("inc-1",))
+    assert row["rl_fallback"] == 1
+    assert row["rl_fallback_reason"] == "rl_selected_no_reroute"
+
+
+def test_remediate_falls_back_when_rl_selects_excluded_path(db, manager_with_rl, flow_ctx):
+    _open_incident(db, "inc-1", "s1-s3")
+    graph = _scenario_a_graph()
+    current_path = [1, 3, 6]
+    # RL "selects" a nonzero action but its resolved path is the very
+    # path being remediated away from -- must fall back, never re-issue
+    # the failing path.
+    rl_client = FakeRLClient(FakeRLDecision(action=3, chosen_path=current_path))
+    manager = manager_with_rl(rl_client)
+
+    chosen_path, results = manager.remediate(
+        "inc-1", "s1-s3", flow_ctx, graph, {}, _all_datapaths(), [current_path],
+    )
+
+    assert chosen_path is not None
+    assert chosen_path != current_path
+    row = db.query_one("SELECT * FROM route_changes WHERE incident_id = ?", ("inc-1",))
+    assert row["rl_fallback"] == 1
+    assert row["rl_fallback_reason"] == "rl_selected_excluded_path"
+
+
+def test_remediate_falls_back_when_rl_selects_path_not_in_candidates(db, manager_with_rl, flow_ctx):
+    _open_incident(db, "inc-1", "s1-s3")
+    graph = _scenario_a_graph()
+    current_path = [1, 3, 6]
+    # A path that doesn't correspond to any real candidate at all --
+    # must never be installed as-is.
+    rl_client = FakeRLClient(FakeRLDecision(action=1, chosen_path=[1, 2, 3, 4, 5, 6]))
+    manager = manager_with_rl(rl_client)
+
+    chosen_path, results = manager.remediate(
+        "inc-1", "s1-s3", flow_ctx, graph, {}, _all_datapaths(), [current_path],
+    )
+
+    assert chosen_path is not None
+    assert chosen_path != [1, 2, 3, 4, 5, 6]
+    row = db.query_one("SELECT * FROM route_changes WHERE incident_id = ?", ("inc-1",))
+    assert row["rl_fallback"] == 1
+    assert row["rl_fallback_reason"] == "rl_selected_invalid_path"
+
+
+def test_remediate_without_rl_client_records_zero_fallback(db, manager, flow_ctx):
+    _open_incident(db, "inc-1", "s1-s3")
+    graph = _scenario_a_graph()
+    manager.remediate("inc-1", "s1-s3", flow_ctx, graph, {}, _all_datapaths(), [[1, 3, 6]])
+
+    row = db.query_one("SELECT * FROM route_changes WHERE incident_id = ?", ("inc-1",))
+    assert row["rl_fallback"] == 0
+    assert row["rl_fallback_reason"] is None
+    assert row["selector"] == "P1_ML_HEURISTIC"
+
+
 def test_no_alternate_path_is_recorded_not_silently_dropped(db, manager, flow_ctx):
     _open_incident(db, "inc-1")
     # A graph with only the current path's own edges -- no alternates exist.
