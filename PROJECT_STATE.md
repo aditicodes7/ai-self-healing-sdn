@@ -33,9 +33,8 @@ Never re-ask anything recorded here.
 
 ## Current phase
 
-**Phase 18 — COMPLETE.** RL integration into the controller, with a
-tested safety-gate fallback to the weighted-cost heuristic. Next: Phase
-19 (backend API + SSE).
+**Phase 19 — COMPLETE.** Backend API + SSE, live-verified against a
+running uvicorn process. Next: Phase 20 (dashboard).
 
 ## Completed components
 
@@ -662,13 +661,46 @@ tested safety-gate fallback to the weighted-cost heuristic. Next: Phase
   service-down, hold-fallback, excluded-path-fallback, invalid-path
   -fallback, and RL-disabled-by-default cases all covered.
 
+**Phase 19 — backend API + SSE:**
+- `backend/api.py` — FastAPI app over the shared SQLite database
+  (no ORM, matching the approved stack): `GET /api/health`,
+  `/api/topology` (latest topology_snapshots row), `/api/links`,
+  `/api/incidents` (optional `status` filter), `/api/incidents/{id}`
+  (aggregates route_changes + flow_rules + verification_results +
+  remediation_events for that incident), `/api/route_changes` (optional
+  `incident_id` filter), `/api/telemetry/{link_id}` and
+  `/api/predictions/{link_id}` (both `since`/`limit`-bounded, returned
+  oldest-first for charting), and `GET /api/events/stream` (SSE).
+- **SSE design, stated honestly:** no message queue/pubsub -- not in
+  the approved stack. `/api/events/stream` is a plain polling loop
+  (1s interval) over `remediation_events.id`, run off the event loop
+  thread via `asyncio.to_thread` for each blocking sqlite3 read. A
+  freshly-connected client sees only events inserted after it connects,
+  not a history replay (verified both in a direct-call unit test and a
+  live 3-second `curl -N` smoke test against a running uvicorn process).
+- Endpoint functions use plain typed defaults rather than FastAPI's
+  `Query(...)` wrapper specifically so they stay callable directly as
+  plain Python functions in tests -- the same "no HTTP layer" testing
+  pattern `test_ml_rl_service.py` established, needed here because
+  starlette's `TestClient` requires `httpx`, which isn't in
+  requirements-ml.txt (not added — no test actually needs it once
+  endpoints are called directly).
+- 14 new tests (`test_backend_api.py`), all real-SQLite-backed (a fresh
+  tmp_path DB per test, real `INSERT`s, real queries) -- no mocking of
+  the database layer itself.
+- **Live-verified, not just unit-tested:** started a real
+  `uvicorn backend.api:app` process and `curl`'d every REST endpoint
+  (200s where data exists, a real 404 for `/api/topology` with an empty
+  DB) plus a 3-second `curl -N` against `/api/events/stream`, observing
+  real `: keepalive` frames at the configured 1s cadence.
+
 ## Pending components
 
-Phase 19 onward: backend API + SSE, dashboard, E2E test (this is also
-where main_app.py/telemetry_collector.py get wired into one live
-process alongside remediation_manager -- Phases 11-18's controller
-modules have all been built and tested in isolation so far, matching
-the pattern already established in Phases 11-15).
+Phase 20 onward: dashboard (vanilla HTML/CSS/JS, cytoscape.js/chart.js
+from cdnjs), E2E test (also where main_app.py/telemetry_collector.py get
+wired into one live process alongside remediation_manager -- Phases
+11-18's controller modules have all been built and tested in isolation
+so far, matching the pattern already established in Phases 11-15).
 
 ## Known issues
 
@@ -684,12 +716,12 @@ horizon 10s, verify settle 8s. `project.controller_backend: ryu`.
 
 ## Test status
 
-199/199 unit tests passing (`test_config.py`, `test_db.py`, `test_logging.py`,
+213/213 unit tests passing (`test_config.py`, `test_db.py`, `test_logging.py`,
 `test_of_compat.py`, `test_features.py`, `test_failure_injector.py`,
 `test_ml_rl_service.py`, `test_path_computer.py`, `test_persistence_tracker.py`,
 `test_stability_manager.py`, `test_flow_manager.py`, `test_remediation_manager.py`,
 `test_baselines.py`, `test_simulator.py`, `test_rewards.py`, `test_actions.py`,
-`test_state.py`, `test_network_env.py`, `test_evaluate_rl.py`,
+`test_state.py`, `test_network_env.py`, `test_evaluate_rl.py`, `test_backend_api.py`,
 `test_verifier.py`, `test_baselines.py`) under
 venv-ml (Python 3.11.9) on macOS. Phases 2-5's Mininet/Ryu gates all
 passed with real measured results in `sdn-vm`, reproduced twice
