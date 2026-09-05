@@ -49,8 +49,20 @@ VENV_ML = Path(os.environ.get("VENV_ML", REPO_ROOT / "venv-ml"))
 VENV_CTRL = Path(os.environ.get("VENV_CTRL", Path.home() / "venv-ctrl-ai-self-healing-sdn"))
 
 CONVERGENCE_TIMEOUT_S = 90
-REACTION_TIMEOUT_S = 120
-FAULT_DURATION_S = 90
+REACTION_TIMEOUT_S = 180
+FAULT_DURATION_S = 150
+
+# Let the controller settle BEFORE injecting. Measured the hard way: with
+# the fault injected immediately after the initial path install, the
+# controller's own startup transient dominates the first ~60s of probe
+# latency (s1-s3 read 41.8 ms falling to 33.9 ms across the fault ramp,
+# and a healthy link fell the same way). The model's strongest features
+# are latency SLOPES, so a settling-induced downward slope during a
+# fault ramp-in is the exact opposite of the pattern it was trained on.
+# Phase 8's training runs injected faults on a schedule well inside a
+# 600 s run, i.e. always into an already-settled network -- the harness
+# has to reproduce that condition to be a fair test.
+SETTLE_BEFORE_FAULT_S = 90
 
 
 def log(msg: str) -> None:
@@ -159,7 +171,20 @@ def main() -> int:
             failures.append("no installed path recorded in route_changes")
             return _finish(failures)
 
-        # -- 5. break a link the flow is actually using ------------------
+        # -- 5. let the controller settle, then break a link it is using --
+        log(f"letting telemetry settle for {SETTLE_BEFORE_FAULT_S}s before injecting "
+            f"(startup transient otherwise inverts the latency trend)…")
+        time.sleep(SETTLE_BEFORE_FAULT_S)
+
+        with Database(db_path) as db:
+            settled = db.query_one(
+                "SELECT AVG(latency_ms) a FROM features WHERE link_id = ? AND latency_ms IS NOT NULL "
+                "AND timestamp > ?",
+                (active_path.split(",")[0] + "-" + active_path.split(",")[1], time.time() - 30),
+            )
+        if settled and settled["a"] is not None:
+            log(f"  settled baseline latency on the first hop: {settled['a']:.1f} ms")
+
         switches = active_path.split(",")
         sw_a, sw_b = switches[0], switches[1]
         log(f"injecting 'gradual_degradation' on {sw_a}-{sw_b} (on the active path)…")

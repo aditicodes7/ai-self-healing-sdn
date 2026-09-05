@@ -380,13 +380,66 @@ the training median (2.6 ms), so inference overhead is the dominant
 term but not the only one. That remainder is not yet explained and is
 NOT claimed to be.
 
-**Status: open.** The closed loop is mechanically verified end to end
-(initial path installed, fault injected on the active path, telemetry
-and predictions flowing, all decision components exercised); what is not
-yet demonstrated live is the ML trigger firing under its own load. Any
-result presented before this is resolved must say so, and no
-experimental claim about detection performance can rest on the live
-closed loop until then.
+**Resolved 2026-09-05 (the inference half).** Inference was moved off
+the OpenFlow event path onto its own greenthread and collapsed from one
+HTTP call per link into a single batched call per cycle
+(`POST /infer/degradation/batch`). Re-measured with the same A/B
+harness: median probe latency with inference ON went 464.2 ms ->
+16.6 ms, statistically indistinguishable from inference OFF (17.2 ms),
+while still producing 448 predictions per 60 s. A unit test asserts the
+batched path returns the same probability as the single-item path, so
+this changed round trips, not answers.
+
+**A second, separate harness flaw, also fixed.** The E2E test injected
+its fault immediately after the initial path install, so the fault ramp
+coincided with the controller's startup transient: probe latency was
+*falling* on every link (s1-s3 41.8 -> 33.9 ms, healthy s2-s3
+19.7 -> 13.6 ms) exactly while the fault ramped in. Since the model's
+strongest features are latency SLOPES (Phase 9 permutation importance),
+a settling-induced downward slope is the inverse of the trained pattern.
+Phase 8's training runs always injected into an already-settled network,
+so the harness was not a fair test. It now settles for 90 s first.
+
+**With both fixed, the detector demonstrably works -- and is one reading
+short of the configured gate.** During the fault window the model ranks
+the genuinely degraded link first, by a wide margin:
+
+| link | max P(degradation) | |
+|---|---:|---|
+| s1-s3 | **0.853** | the injected fault |
+| s2-s5 | 0.463 | healthy |
+| s1-s2 | 0.280 | healthy |
+| (5 others) | <= 0.243 | healthy |
+
+and the underlying signal is real: s1-s3 latency went 20.5 ms before the
+fault to 39.1 ms during it.
+
+**Status: open, precisely characterised.** Of 258 readings during the
+fault, exactly 2 crossed the 0.75 threshold, and they were consecutive.
+The best persistence window achieved was 2-of-4; `persistence.consecutive`
+requires 3. The distribution falls off a cliff after the top two
+readings (0.853, 0.837, then 0.533, 0.520, 0.517, 0.480). So the loop
+does not fire because the model's signal is strong but brief, not
+because any component is broken.
+
+Closing this requires a deliberate decision that is NOT a bug fix, and
+must be reported as a tuning choice rather than made silently:
+  * relax `persistence.consecutive` from 3-of-4 to 2-of-4 (still rejects
+    single-sample blips, and would fire on this run), and/or
+  * lower `ml.threshold` -- constrained by `persistence.uncertainty_band`
+    [0.45, 0.60], since a threshold inside that band collides with the
+    abstention rule, and/or
+  * retrain so the signal is sustained rather than a 1-cycle spike.
+
+Note also that predictions are currently produced once per (link,
+switch-side), i.e. twice per telemetry cycle per link, so a persistence
+window of 4 spans only ~2 real telemetry cycles rather than the 4 the
+spec's "3 of the last 4 windows" wording implies. Any retune should
+settle that semantics question at the same time.
+
+Until one of those is chosen and re-measured, no experimental claim
+about end-to-end detection performance may rest on the live closed
+loop.
 
 Further entries (queue-occupancy availability, etc.) are added as those
 phases are reached.
