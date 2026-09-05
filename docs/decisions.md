@@ -220,3 +220,30 @@ executing the plan.
   configured with `--controller=remote,ip=<host-ip>,port=6653`. This will be
   evaluated for real at the Phase 2 GO/NO-GO smoke test; if it adds friction
   the fallback is to run both venv-ctrl and Mininet inside the VM.
+- 2026-09-05: Phase 21 assembles the closed loop in
+  `controller/healing_loop.py` as a PLAIN class, not a `ryu.RyuApp`.
+  Everything it needs (graph, datapaths, link metrics, sleep, spawn) is
+  injected, so the full prediction -> persistence -> stability ->
+  remediation -> verification chain is exercisable under venv-ml with
+  fakes and no ryu/Mininet/real time. `controller/telemetry_collector.py`
+  builds the live wiring, because only that module is guaranteed to run
+  under venv-ctrl where `requests` (needed by inference_client and
+  rl_client) exists. `hub.sleep`/`hub.spawn` are injected there: Ryu is a
+  cooperative-greenthread world, and a multi-second verification run
+  inline inside an OpenFlow event handler would stall every other
+  switch's telemetry.
+- 2026-09-05: The healing loop folds the ML prediction into the path
+  COST before comparing routes (`_metrics_with_prediction`). Found by
+  assembling the loop: each component was individually correct, yet the
+  system never rerouted, because a link predicted to fail still looked
+  cheap by its current (still-healthy) counters, so the min-improvement
+  gate rejected every alternative as "worse". The degrading link is
+  re-costed with the model's own probability as an expected loss_rate
+  and utilization floor (never lowering a measured value). This is a
+  ranking-only adjustment; nothing adjusted is written to the DB or
+  reported as a measurement.
+- 2026-09-05: The healing loop seeds the verifier's exclusion list with
+  the currently-failing path. `Verifier.verify_and_retry` passes `[]` on
+  its first attempt, so without this the first remediation could
+  "resolve" an incident by re-selecting the very path that was failing.
+  Every candidate still crossing the degrading link is excluded too.

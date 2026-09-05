@@ -36,6 +36,21 @@ result (service down, timeout, malformed response) means no prediction
 this round -- no row is written to `predictions`, and no fallback value
 is fabricated. Downstream consumers (Phase 12's persistence tracker) must
 treat "no recent prediction" as inconclusive, not as healthy.
+
+Phase 21 closes the loop. This module constructs the full decision chain
+(controller/healing_loop.py: persistence -> stability -> remediation ->
+verification, with the RL policy and its heuristic fallback underneath)
+and feeds every successful prediction into it. It is built HERE rather
+than inside healing_loop.py because only this module is guaranteed to
+run under venv-ctrl, where `requests` -- needed by inference_client and
+rl_client -- actually exists.
+
+Two things the loop needs are supplied from this module's own live
+state: the latest derived per-link metrics (cached as they are computed
+for the ML pipeline, so path costing and prediction agree on what the
+network looks like), and the managed flow's path, installed once LLDP
+discovery has converged (_ensure_initial_path) so the controller KNOWS
+which path traffic is on instead of inferring it from flood behaviour.
 """
 from __future__ import annotations
 
@@ -48,7 +63,15 @@ from common.config_loader import load_config
 from common.features import RawWindow, compute_base_metrics, compute_feature_vector
 from common.logging_setup import configure_logging
 from common.schema import PROBE_ETH_TYPE, DataSource
+from controller.flow_manager import FlowManager
+from controller.healing_loop import HealingLoop
 from controller.inference_client import InferenceClient
+from controller.path_computer import LinkMetrics
+from controller.persistence_tracker import PersistenceTracker
+from controller.remediation_manager import FlowContext, RemediationManager
+from controller.rl_client import RLClient
+from controller.stability_manager import StabilityManager
+from controller.verifier import Verifier
 from controller.of_compat import (
     DEAD_DISPATCHER,
     MAIN_DISPATCHER,
@@ -116,9 +139,139 @@ class TelemetryCollector(app_manager.RyuApp):
             cfg.ml_rl_service.host, cfg.ml_rl_service.port, cfg.ml.inference_timeout_ms
         )
 
+        # Phase 21: the closed loop. Everything below this point is what
+        # turns a prediction into an actual reroute. Latest per-link
+        # derived metrics are cached here (rather than re-queried from
+        # SQLite) because the loop asks for them on every decision.
+        self._latest_link_metrics: dict[str, LinkMetrics] = {}
+        self._healing_loop = self._build_healing_loop(cfg)
+        self._initial_path_installed = False
+        self._initial_path_attempts = 0
+
         self._monitor_thread = hub.spawn(self._run_forever, self._poll_all_port_stats, self.interval_s)
         self._echo_thread = hub.spawn(self._run_forever, self._send_all_echo_requests, self.echo_interval_s)
         self._probe_thread = hub.spawn(self._run_forever, self._send_all_probes, self.interval_s)
+        self._healing_thread = hub.spawn(self._run_forever, self._ensure_initial_path, self.interval_s)
+
+    def _build_healing_loop(self, cfg) -> HealingLoop:
+        """Constructs the full decision chain. RLClient is built here (not
+        inside HealingLoop) because only this module is guaranteed to run
+        under venv-ctrl, where `requests` exists."""
+        flow_manager = FlowManager(
+            self._db,
+            priority=cfg.flow.priority_remediated,
+            hard_timeout_s=cfg.flow.hard_timeout_s,
+            idle_timeout_s=cfg.flow.idle_timeout_s,
+        )
+        rl_client = RLClient(cfg.ml_rl_service.host, cfg.ml_rl_service.port, cfg.rl.timeout_ms)
+        remediation = RemediationManager(
+            self._db, flow_manager,
+            k_shortest=cfg.path.k_shortest,
+            weight_utilization=cfg.path.weights.utilization,
+            weight_latency=cfg.path.weights.latency,
+            weight_loss=cfg.path.weights.loss,
+            weight_hop_count=cfg.path.weights.hop_count,
+            rl_client=rl_client,
+        )
+        return HealingLoop(
+            db=self._db,
+            persistence=PersistenceTracker(
+                window=cfg.persistence.window,
+                consecutive=cfg.persistence.consecutive,
+                uncertainty_band=cfg.persistence.uncertainty_band,
+                threshold=cfg.ml.threshold,
+            ),
+            stability=StabilityManager(
+                cooldown_s=cfg.stability.cooldown_s,
+                route_hold_s=cfg.stability.route_hold_s,
+                min_improvement=cfg.stability.min_improvement,
+            ),
+            remediation=remediation,
+            verifier=Verifier(
+                self._db,
+                settle_s=cfg.verify.settle_s,
+                windows=cfg.verify.windows,
+                latency_tolerance=cfg.verify.tolerance.latency_pct,
+                loss_tolerance=cfg.verify.tolerance.loss_pct,
+                max_retries=cfg.remediation.max_retries,
+            ),
+            flow_ctx=self._managed_flow_ctx(),
+            graph_provider=lambda: self.topology_manager.graph,
+            datapaths_provider=lambda: self.datapaths,
+            link_metrics_provider=lambda: dict(self._latest_link_metrics),
+            k_shortest=cfg.path.k_shortest,
+            weight_utilization=cfg.path.weights.utilization,
+            weight_latency=cfg.path.weights.latency,
+            weight_loss=cfg.path.weights.loss,
+            weight_hop_count=cfg.path.weights.hop_count,
+            # Ryu runs on cooperative greenthreads: time.sleep would stall
+            # every other switch's telemetry, and running a multi-second
+            # verification inline inside an OpenFlow event handler would
+            # do the same.
+            sleep_fn=hub.sleep,
+            spawn_fn=hub.spawn,
+        )
+
+    def _managed_flow_ctx(self) -> FlowContext:
+        """The demand the loop protects: h1->h6, this project's flagship
+        flow (network/traffic_generator.py and every dataset run use it).
+        Host-facing ports are port 1 on each edge switch, matching how
+        network/topo_builder.py attaches exactly one host per switch."""
+        return FlowContext(
+            flow_key="h1-h6",
+            src_dpid=1,
+            dst_dpid=6,
+            src_host_port=1,
+            dst_host_port=1,
+            ipv4_src="10.0.0.1",
+            ipv4_dst="10.0.0.6",
+        )
+
+    def _ensure_initial_path(self) -> None:
+        """Install the managed flow's path once the topology has actually
+        converged. Runs on the periodic loop rather than at startup
+        because LLDP discovery needs several seconds after the switches
+        connect before the graph is complete.
+
+        Every not-yet-ready branch says what it is waiting for: a silent
+        early return here is indistinguishable from a crash when the loop
+        never installs a path, which is exactly the dead end the first
+        live E2E run hit."""
+        if self._initial_path_installed:
+            return
+
+        graph = self.topology_manager.graph
+        ctx = self._healing_loop.flow_ctx
+        self._initial_path_attempts += 1
+        # Throttled: this runs every telemetry interval, and a converging
+        # network is normal for the first several seconds.
+        should_log = self._initial_path_attempts % 5 == 1
+
+        if ctx.src_dpid not in graph or ctx.dst_dpid not in graph:
+            if should_log:
+                logger.info(
+                    "waiting to install initial path: endpoints not discovered yet",
+                    extra={
+                        "src_dpid": ctx.src_dpid, "dst_dpid": ctx.dst_dpid,
+                        "known_switches": sorted(graph.nodes()),
+                        "connected_datapaths": sorted(self.datapaths),
+                    },
+                )
+            return
+
+        if len(self.datapaths) < graph.number_of_nodes():
+            if should_log:
+                logger.info(
+                    "waiting to install initial path: not every switch has connected",
+                    extra={
+                        "connected": len(self.datapaths),
+                        "discovered": graph.number_of_nodes(),
+                    },
+                )
+            return
+
+        if self._healing_loop.install_initial_path() is not None:
+            self._initial_path_installed = True
 
     def _run_forever(self, iteration_fn, interval_s: float) -> None:
         """A single buggy iteration must never silently kill the whole
@@ -210,6 +363,15 @@ class TelemetryCollector(app_manager.RyuApp):
         if base is None:
             return
 
+        # Keep the healing loop's view of live per-link conditions fresh.
+        # These are the same derived metrics the ML pipeline consumes, so
+        # path costing and prediction agree on what the network looks like.
+        self._latest_link_metrics[link_id] = LinkMetrics(
+            utilization=base.utilization,
+            latency_ms=base.latency_ms,
+            loss_rate=base.loss_rate,
+        )
+
         history_key = (link_id, switch_id)
         history = self._link_history.setdefault(history_key, [])
         history.append(base)
@@ -239,6 +401,15 @@ class TelemetryCollector(app_manager.RyuApp):
                 "horizon_s": self._label_horizon_s,
             },
         )
+
+        # Hand the prediction to the closed loop (Phase 21). A failure in
+        # the decision chain must never take down telemetry collection --
+        # the loop is what heals the network, but telemetry is what lets
+        # anyone see it at all.
+        try:
+            self._healing_loop.on_prediction(link_id, probability, curr_row["timestamp"])
+        except Exception:
+            logger.exception("healing loop raised on prediction", extra={"link_id": link_id})
 
     def _link_id_for(self, dpid: int, port_no: int) -> str | None:
         graph = self.topology_manager.graph
