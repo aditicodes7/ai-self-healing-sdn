@@ -152,6 +152,9 @@ class TelemetryCollector(app_manager.RyuApp):
         self._echo_thread = hub.spawn(self._run_forever, self._send_all_echo_requests, self.echo_interval_s)
         self._probe_thread = hub.spawn(self._run_forever, self._send_all_probes, self.interval_s)
         self._healing_thread = hub.spawn(self._run_forever, self._ensure_initial_path, self.interval_s)
+        # Inference runs on its own greenthread, off the OpenFlow event
+        # path, for the reason documented on _update_features.
+        self._inference_thread = hub.spawn(self._run_forever, self._run_inference_cycle, self.interval_s)
 
     def _build_healing_loop(self, cfg) -> HealingLoop:
         """Constructs the full decision chain. RLClient is built here (not
@@ -350,9 +353,19 @@ class TelemetryCollector(app_manager.RyuApp):
                     )
 
                 if row["link_id"] is not None:
-                    self._update_features_and_predict(row["link_id"], str(dpid), prev, row)
+                    self._update_features(row["link_id"], str(dpid), prev, row)
 
-    def _update_features_and_predict(self, link_id: str, switch_id: str, prev_row: dict, curr_row: dict) -> None:
+    def _update_features(self, link_id: str, switch_id: str, prev_row: dict, curr_row: dict) -> None:
+        """Cheap, I/O-free: derive metrics and append to history.
+
+        Inference deliberately does NOT happen here. This runs inside the
+        OpenFlow event handler, and Phase 21 measured that issuing HTTP
+        inference calls from this path inflated the controller's own
+        latency-probe measurements ~20x (23 ms -> 464 ms), corrupting the
+        latency-slope features the model depends on most. Scoring is done
+        by _run_inference_cycle on its own greenthread instead. See
+        docs/limitations.md.
+        """
         dt = curr_row["timestamp"] - prev_row["timestamp"]
         curr_with_latency = dict(curr_row)
         curr_with_latency["latency_ms"] = self._latest_latency_ms.get(link_id)
@@ -378,38 +391,59 @@ class TelemetryCollector(app_manager.RyuApp):
         if len(history) > _MAX_HISTORY_LEN:
             del history[: len(history) - _MAX_HISTORY_LEN]
 
-        feature_vector = compute_feature_vector(
-            history, len(history) - 1,
-            windows=self._features_config.windows,
-            ewma_alpha=self._features_config.ewma_alpha,
-            baseline_windows=self._features_config.baseline_healthy_windows,
-        )
+    def _run_inference_cycle(self) -> None:
+        """Scores every link that has enough history, in ONE batched call,
+        off the OpenFlow event path.
 
-        result = self._inference_client.predict_degradation(link_id, feature_vector)
+        The safety gate is unchanged and now applies to the whole batch:
+        if the service is down, slow, or returns anything unusable, NO
+        predictions are recorded for this cycle and nothing is
+        fabricated. Downstream must treat "no recent prediction" as
+        inconclusive, never as healthy."""
+        snapshot = [
+            (link_id, switch_id, list(history))
+            for (link_id, switch_id), history in self._link_history.items()
+            if history
+        ]
+        if not snapshot:
+            return
+
+        items = []
+        for link_id, _switch_id, history in snapshot:
+            feature_vector = compute_feature_vector(
+                history, len(history) - 1,
+                windows=self._features_config.windows,
+                ewma_alpha=self._features_config.ewma_alpha,
+                baseline_windows=self._features_config.baseline_healthy_windows,
+            )
+            items.append((link_id, feature_vector))
+
+        result = self._inference_client.predict_degradation_batch(items)
         if result is None:
-            return  # safety gate: no prediction this round, nothing fabricated
+            return  # safety gate: no predictions this round
 
-        probability, model_version = result
-        self._db.insert(
-            "predictions",
-            {
-                "timestamp": curr_row["timestamp"],
-                "link_id": link_id,
-                "probability": probability,
-                "threshold": self._ml_threshold,
-                "model_version": model_version,
-                "horizon_s": self._label_horizon_s,
-            },
-        )
-
-        # Hand the prediction to the closed loop (Phase 21). A failure in
-        # the decision chain must never take down telemetry collection --
-        # the loop is what heals the network, but telemetry is what lets
-        # anyone see it at all.
-        try:
-            self._healing_loop.on_prediction(link_id, probability, curr_row["timestamp"])
-        except Exception:
-            logger.exception("healing loop raised on prediction", extra={"link_id": link_id})
+        pairs, model_version = result
+        now = time.time()
+        for link_id, probability in pairs:
+            self._db.insert(
+                "predictions",
+                {
+                    "timestamp": now,
+                    "link_id": link_id,
+                    "probability": probability,
+                    "threshold": self._ml_threshold,
+                    "model_version": model_version,
+                    "horizon_s": self._label_horizon_s,
+                },
+            )
+            # Hand the prediction to the closed loop. A failure in the
+            # decision chain must never take down telemetry collection --
+            # the loop is what heals the network, but telemetry is what
+            # lets anyone see it at all.
+            try:
+                self._healing_loop.on_prediction(link_id, probability, now)
+            except Exception:
+                logger.exception("healing loop raised on prediction", extra={"link_id": link_id})
 
     def _link_id_for(self, dpid: int, port_no: int) -> str | None:
         graph = self.topology_manager.graph

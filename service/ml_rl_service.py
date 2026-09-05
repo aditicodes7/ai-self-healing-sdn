@@ -120,6 +120,27 @@ class DegradationResponse(BaseModel):
     inference_ms: float
 
 
+class DegradationBatchItem(BaseModel):
+    link_id: str
+    features: dict[str, float | None]
+
+
+class DegradationBatchRequest(BaseModel):
+    items: list[DegradationBatchItem]
+
+
+class DegradationBatchResult(BaseModel):
+    link_id: str
+    probability: float
+
+
+class DegradationBatchResponse(BaseModel):
+    results: list[DegradationBatchResult]
+    model_version: str
+    threshold: float
+    inference_ms: float
+
+
 class RouteRequest(BaseModel):
     src_dpid: int
     dst_dpid: int
@@ -177,6 +198,50 @@ def infer_degradation(req: DegradationRequest):
         probability=probability,
         model_version=_metadata.get("chosen_model", "unknown"),
         threshold=config.ml.threshold,
+        inference_ms=inference_ms,
+    )
+
+
+@app.post("/infer/degradation/batch", response_model=DegradationBatchResponse)
+def infer_degradation_batch(req: DegradationBatchRequest):
+    """Scores every link in ONE request and one predict_proba call.
+
+    Phase 21 measured that issuing a separate HTTP inference call per
+    link, from inside the controller's single-threaded event loop,
+    inflated the controller's own latency-probe measurements ~20x (23 ms
+    -> 464 ms) -- which corrupts the latency-slope features this very
+    model depends on. Batching collapses ~16 round trips per telemetry
+    cycle into one, and sklearn scores a matrix far faster than N
+    single rows. See docs/limitations.md.
+    """
+    if _model is None or _metadata is None:
+        raise HTTPException(status_code=503, detail=f"model not loaded: {_load_error}")
+
+    feature_order = _metadata["feature_order"]
+    if not req.items:
+        return DegradationBatchResponse(
+            results=[], model_version=_metadata.get("chosen_model", "unknown"),
+            threshold=load_config().ml.threshold, inference_ms=0.0,
+        )
+
+    matrix = np.full((len(req.items), len(feature_order)), np.nan, dtype=float)
+    for i, item in enumerate(req.items):
+        for j, name in enumerate(feature_order):
+            v = item.features.get(name)
+            if v is not None:
+                matrix[i, j] = v
+
+    t0 = time.perf_counter()
+    probabilities = _model.predict_proba(matrix)[:, 1]
+    inference_ms = (time.perf_counter() - t0) * 1000.0
+
+    return DegradationBatchResponse(
+        results=[
+            DegradationBatchResult(link_id=item.link_id, probability=float(p))
+            for item, p in zip(req.items, probabilities)
+        ],
+        model_version=_metadata.get("chosen_model", "unknown"),
+        threshold=load_config().ml.threshold,
         inference_ms=inference_ms,
     )
 

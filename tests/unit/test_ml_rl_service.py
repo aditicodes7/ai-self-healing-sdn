@@ -59,6 +59,58 @@ def test_infer_degradation_raises_503_when_model_unavailable():
         ml_rl_service._load_model()
 
 
+def test_infer_degradation_batch_scores_every_item():
+    feature_order = ml_rl_service._metadata["feature_order"]
+    req = ml_rl_service.DegradationBatchRequest(
+        items=[
+            ml_rl_service.DegradationBatchItem(link_id="s1-s2", features={n: 0.1 for n in feature_order}),
+            ml_rl_service.DegradationBatchItem(link_id="s1-s3", features={n: 0.9 for n in feature_order}),
+            ml_rl_service.DegradationBatchItem(link_id="s3-s6", features={}),
+        ]
+    )
+    resp = ml_rl_service.infer_degradation_batch(req)
+
+    assert [r.link_id for r in resp.results] == ["s1-s2", "s1-s3", "s3-s6"]
+    assert all(0.0 <= r.probability <= 1.0 for r in resp.results)
+
+
+def test_infer_degradation_batch_matches_single_call():
+    """The batched path must not change the model's answer -- only how
+    many round trips it takes to get it."""
+    feature_order = ml_rl_service._metadata["feature_order"]
+    features = {n: 0.42 for n in feature_order}
+
+    single = ml_rl_service.infer_degradation(
+        ml_rl_service.DegradationRequest(link_id="s1-s2", features=features)
+    )
+    batched = ml_rl_service.infer_degradation_batch(
+        ml_rl_service.DegradationBatchRequest(
+            items=[ml_rl_service.DegradationBatchItem(link_id="s1-s2", features=features)]
+        )
+    )
+    assert batched.results[0].probability == pytest.approx(single.probability)
+
+
+def test_infer_degradation_batch_handles_empty_input():
+    resp = ml_rl_service.infer_degradation_batch(ml_rl_service.DegradationBatchRequest(items=[]))
+    assert resp.results == []
+
+
+def test_infer_degradation_batch_raises_503_when_model_unavailable():
+    ml_rl_service._model = None
+    ml_rl_service._load_error = "simulated unavailability"
+    try:
+        with pytest.raises(HTTPException) as exc_info:
+            ml_rl_service.infer_degradation_batch(
+                ml_rl_service.DegradationBatchRequest(
+                    items=[ml_rl_service.DegradationBatchItem(link_id="s1-s2", features={})]
+                )
+            )
+        assert exc_info.value.status_code == 503
+    finally:
+        ml_rl_service._load_model()
+
+
 @pytest.fixture(autouse=True)
 def _load_real_rl_policy():
     ml_rl_service._load_rl_policy()

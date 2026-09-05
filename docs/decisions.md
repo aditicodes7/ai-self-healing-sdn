@@ -261,3 +261,17 @@ executing the plan.
   detection-performance claim may rest on the live loop until resolved.
   A CPU-contention explanation was tested first and rejected (4 -> 6
   vCPUs moved mean latency only 517 -> 437 ms, max probability unchanged).
+- 2026-09-05: Fixed Phase 21's inference-feedback pathology two ways,
+  both required: (1) inference moved OFF the OpenFlow event path into
+  its own greenthread (`_run_inference_cycle`), so probe PacketIns are
+  no longer timestamped behind inference work; (2) per-link inference
+  calls replaced by one batched call per cycle
+  (`POST /infer/degradation/batch`, `predict_degradation_batch`),
+  collapsing ~16 HTTP round trips into one and letting sklearn score a
+  matrix instead of N single rows. Re-measured with the same A/B
+  harness: median probe latency with inference ON went 464.2 ms ->
+  16.6 ms, now indistinguishable from inference OFF (17.2 ms), while
+  still producing 448 predictions per 60s window. The batch path is
+  covered by a test asserting it returns the same probability as the
+  single-item path, so the fix changes only how many round trips are
+  needed, not the model's answer.

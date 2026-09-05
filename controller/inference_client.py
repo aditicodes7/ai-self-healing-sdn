@@ -80,3 +80,68 @@ class InferenceClient:
             },
         )
         return probability, model_version
+
+    def predict_degradation_batch(
+        self, items: list[tuple[str, dict]]
+    ) -> tuple[list[tuple[str, float]], str] | None:
+        """Scores many links in ONE request. `items` is [(link_id,
+        features), ...]; returns ([(link_id, probability), ...],
+        model_version) or None under exactly the same safety gate as
+        predict_degradation -- any failure yields no predictions at all
+        rather than a partially-fabricated set.
+
+        Exists because per-link calls from inside the controller's event
+        loop measurably corrupted its own latency probes (Phase 21; see
+        docs/limitations.md). One round trip per telemetry cycle instead
+        of one per link.
+        """
+        if not items:
+            return [], "none"
+
+        t0 = time.perf_counter()
+        try:
+            resp = requests.post(
+                f"{self.base_url}/infer/degradation/batch",
+                json={"items": [{"link_id": lid, "features": f} for lid, f in items]},
+                timeout=self.timeout_s,
+            )
+        except requests.RequestException as exc:
+            logger.warning(
+                "batch inference request failed, falling back to no predictions",
+                extra={"n_items": len(items), "error": str(exc)},
+            )
+            return None
+
+        elapsed_ms = (time.perf_counter() - t0) * 1000.0
+
+        if resp.status_code != 200:
+            logger.warning(
+                "batch inference returned non-200, falling back to no predictions",
+                extra={"n_items": len(items), "status_code": resp.status_code, "elapsed_ms": elapsed_ms},
+            )
+            return None
+
+        try:
+            body = resp.json()
+            model_version = str(body["model_version"])
+            pairs = [(str(r["link_id"]), float(r["probability"])) for r in body["results"]]
+        except (ValueError, KeyError, TypeError) as exc:
+            logger.warning(
+                "batch inference response malformed, falling back to no predictions",
+                extra={"n_items": len(items), "error": str(exc)},
+            )
+            return None
+
+        for link_id, probability in pairs:
+            if not (0.0 <= probability <= 1.0):
+                logger.warning(
+                    "batch inference returned an out-of-range probability, discarding the whole batch",
+                    extra={"link_id": link_id, "probability": probability},
+                )
+                return None
+
+        logger.info(
+            "batch degradation prediction",
+            extra={"n_items": len(items), "model_version": model_version, "elapsed_ms": elapsed_ms},
+        )
+        return pairs, model_version
