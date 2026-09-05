@@ -247,3 +247,17 @@ executing the plan.
   its first attempt, so without this the first remediation could
   "resolve" an incident by re-selecting the very path that was failing.
   Every candidate still crossing the degrading link is excluded too.
+- 2026-09-05: Phase 21's live loop never fired despite 982 real
+  predictions (max probability 0.193 vs a 0.75 threshold). Rather than
+  lowering the threshold to make it fire -- which would have manufactured
+  a result -- the cause was measured. `tests/e2e/measure_probe_overhead.py`
+  A/B-tests the identical controller and topology with inference the only
+  variable: median probe latency is 23.3 ms with inference off and
+  464.2 ms with it on, against 2.6 ms in the Phase 8 training data. The
+  controller's own blocking per-link HTTP inference calls run inside the
+  same single-threaded event loop that timestamps the latency probes, so
+  running the model degrades the latency-slope features the model relies
+  on most. Documented in docs/limitations.md as an open issue; no
+  detection-performance claim may rest on the live loop until resolved.
+  A CPU-contention explanation was tested first and rejected (4 -> 6
+  vCPUs moved mean latency only 517 -> 437 ms, max probability unchanged).

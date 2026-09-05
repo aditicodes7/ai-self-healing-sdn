@@ -333,5 +333,60 @@ sim-to-real gap on top of the queueing-delay one documented above, and
 should be stated in the technical paper's RL methodology section
 alongside it.
 
+## Phase 21: the controller's own inference calls corrupt the latency it measures
+
+The closed loop was assembled and runs end-to-end against a live
+network, but on its first full runs it never fired: 982 real predictions
+were written and the maximum probability on the deliberately-degraded
+link was 0.193, far below the 0.75 threshold. Investigating rather than
+retuning the threshold produced a measured root cause.
+
+**The measurement.** `tests/e2e/measure_probe_overhead.py` runs the
+identical controller and topology twice, changing exactly one thing --
+whether `service/ml_rl_service.py` is reachable -- and compares the
+latency the controller's own probe reports (60s collection each,
+480 samples per condition):
+
+| condition | median | mean | p95 | max |
+|---|---:|---:|---:|---:|
+| inference OFF (0 predictions) | 23.3 ms | 26.4 ms | 53.6 ms | 82.9 ms |
+| inference ON (464 predictions) | 464.2 ms | 472.4 ms | 822.5 ms | 1047.4 ms |
+| Phase 8 training data | 2.6 ms | — | 32.8 ms | 69.3 ms |
+
+Enabling inference makes the controller's latency measurements ~20x
+worse. The mechanism: the latency probe times a controller-emitted frame
+from PacketOut to the matching PacketIn, so it measures the controller's
+own event-loop responsiveness as much as the link. Every telemetry cycle
+the controller issues one blocking HTTP inference call per link inside
+that same single-threaded event loop, so probe PacketIns queue behind
+that work and are timestamped late.
+
+**This is a feedback pathology, not a property of the network.** The
+model's most important features are latency slopes (Phase 9's
+permutation importance ranked `latency_ms_slope_10` and `slope_5`
+first). Running the model therefore degrades the very signal the model
+depends on, and the live feature distribution lands ~200x outside
+anything present in training -- so the classifier emits near-zero
+probabilities on inputs it has never seen. Both halves are real: a
+genuine train/serve skew, and a self-inflicted one.
+
+**Not the cause:** CPU contention. Raising the VM from 4 to 6 vCPUs
+moved live mean latency only 517 ms -> 437 ms and left the maximum
+probability unchanged at 0.193. That hypothesis was tested and rejected
+rather than assumed.
+
+**Residual gap.** Even with inference off, live median (23.3 ms) is ~9x
+the training median (2.6 ms), so inference overhead is the dominant
+term but not the only one. That remainder is not yet explained and is
+NOT claimed to be.
+
+**Status: open.** The closed loop is mechanically verified end to end
+(initial path installed, fault injected on the active path, telemetry
+and predictions flowing, all decision components exercised); what is not
+yet demonstrated live is the ML trigger firing under its own load. Any
+result presented before this is resolved must say so, and no
+experimental claim about detection performance can rest on the live
+closed loop until then.
+
 Further entries (queue-occupancy availability, etc.) are added as those
 phases are reached.
