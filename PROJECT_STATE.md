@@ -33,9 +33,13 @@ Never re-ask anything recorded here.
 
 ## Current phase
 
-**Phase 20 — COMPLETE.** Dashboard, visually verified via real rendered
-screenshots against a running server. Next: Phase 21 (wire the closed
-loop into one live process + E2E test).
+**Phase 21 — COMPLETE (with a measured caveat).** The closed loop runs
+end to end against a live network: fault -> detect -> reroute (RL) ->
+verify -> incident closed SUCCESS, in ~18s. Verified on 3 consecutive
+live runs; **2 of 3 passed**, the third opened no incident. That
+reliability figure is NOT yet a claim -- 3 runs is far too small a
+sample, and Phase 22 is where it gets measured across >=5 seeds. Next:
+Phase 22 (the 8 experiments).
 
 ## Completed components
 
@@ -730,18 +734,65 @@ loop into one live process + E2E test).
   a fixed delay — an SSE connection never "finishes loading", so
   `--virtual-time-budget` alone hangs forever. Not a page defect.
 
+**Phase 21 — the closed loop, assembled and running live:**
+- `controller/healing_loop.py` — runs the chain Phases 11-18 built in
+  isolation: prediction -> persistence -> stability -> incident ->
+  remediation (RL, heuristic fallback) -> verification -> incident
+  closed. A plain class with everything injected, so the whole loop is
+  testable under venv-ml with no ryu, Mininet or real time.
+- `controller/telemetry_collector.py` builds the live wiring and feeds it
+  predictions, injecting `hub.sleep`/`hub.spawn` so a multi-second
+  verification never stalls Ryu's event loop.
+- `tests/e2e/run_closed_loop_e2e.py` — the acceptance gate: starts the
+  service, controller and network, injects a real fault on the active
+  path, and polls the DB for what the system did.
+- `tests/e2e/measure_probe_overhead.py` — the A/B harness that diagnosed
+  the inference-feedback pathology.
+- `ml/threshold_sweep.py` + `results/tables/ml_threshold_sweep.json` —
+  operating point chosen from held-out test data, not from a live run.
+
+**Six real bugs found by assembling components that had only met in
+tests** (all in docs/decisions.md):
+  1. The min-improvement gate blocked EVERY reroute — a link predicted to
+     fail still looked cheap by its current healthy counters. Predictions
+     now feed the path cost, which is what makes the ML affect routing.
+  2. Remediation could "fix" an incident by re-selecting the failing
+     path, since the verifier passes an empty exclusion list first time.
+  3. The controller's own per-link inference calls, made inside its event
+     loop, inflated its latency-probe measurements ~20x (23 -> 464 ms),
+     corrupting the latency-slope features the model most depends on.
+     Fixed by batching + moving inference off the event path: 16.6 ms.
+  4. The E2E injected its fault at startup, so the controller's settling
+     transient inverted the latency trend the model reads.
+  5. Predictions were produced per switch-side, so `persistence.window=4`
+     spanned ~4.2 s instead of ~8 s, and let a link's two endpoints
+     corroborate each other.
+  6. Harness flaws: no `net.start()`, and block-buffered controller logs
+     that discarded diagnostics on teardown.
+
+**Gate result — real, and honestly qualified:**
+
+    fault injected on s1-s3 (carrying traffic)
+    +18s  incident opened, P=0.420, persistence confirmed
+          rerouted s1,s3,s6 -> s1,s2,s3,s6 (selector=P2_ML_RL, no fallback)
+    +27s  verification SUCCESS, 0 retries, closed SUCCESS
+
+  **2 of 3 consecutive live runs passed**; the third opened no incident.
+  The two passes picked *different* replacement paths (s1,s2,s3,s6 and
+  s1,s4,s5,s6), both avoiding the degraded link — evidence the RL policy
+  decides from live conditions. Three runs is far too small to state a
+  detection rate; Phase 22 measures it across >=5 seeds.
+
 ## Pending components
 
-Phase 21 onward: **wire the closed loop into one live process** — this
-is larger than "an E2E test". Phases 11-18's controller modules
-(`persistence_tracker`, `stability_manager`, `path_computer`,
-`flow_manager`, `remediation_manager`, `verifier`, `rl_client`) are all
-built and unit-tested but are currently instantiated ONLY in tests. The
-live chain today runs telemetry → features → ML prediction and stops
-there. Assembling prediction → persistence → stability → remediation →
-flow install → verification into a running Ryu app is the real work of
-Phase 21, and only after that do the Phase 22 experiments have a whole
-system to measure.
+Phase 22 onward: the 8 experiments (>=5 seeds each), figures, README/
+architecture docs, technical paper + project report, presentation +
+demo guide, patent documentation, and the final reproducibility review.
+
+Phase 22 is now unblocked: it needs a whole working system to measure,
+and as of Phase 21 there is one. It is also where the closed loop's
+detection reliability gets a real number (see docs/limitations.md --
+the 2-of-3 observed in Phase 21 is an observation, not a result).
 
 ## Known issues
 
@@ -757,7 +808,7 @@ horizon 10s, verify settle 8s. `project.controller_backend: ryu`.
 
 ## Test status
 
-214/214 unit tests passing (`test_config.py`, `test_db.py`, `test_logging.py`,
+243/243 unit tests passing (`test_config.py`, `test_db.py`, `test_logging.py`,
 `test_of_compat.py`, `test_features.py`, `test_failure_injector.py`,
 `test_ml_rl_service.py`, `test_path_computer.py`, `test_persistence_tracker.py`,
 `test_stability_manager.py`, `test_flow_manager.py`, `test_remediation_manager.py`,

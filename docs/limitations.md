@@ -440,6 +440,26 @@ running end to end, the live result is:
            rerouted s1,s3,s6 -> s1,s2,s3,s6 (selector=P2_ML_RL, no fallback)
     +27 s  verification SUCCESS, 0 retries, incident closed SUCCESS
 
+**Reliability, measured honestly: 2 of 3 consecutive live runs detected
+and remediated the fault; the third opened no incident at all.** The two
+successes also selected *different* replacement paths (s1,s2,s3,s6 and
+s1,s4,s5,s6), both correctly avoiding the degraded link, which is
+evidence the RL policy is deciding from live conditions rather than
+replaying a fixed answer.
+
+A ~2/3 detection rate is consistent with the model's measured per-reading
+recall (0.331) combined with a 3-of-4 persistence requirement: whether
+the loop fires depends on whether that run's scattered detections happen
+to cluster inside a 4-window span. Three runs is far too small a sample
+to put a number on this -- the 95% interval on 2/3 spans roughly
+0.09-0.99 -- so NO detection-rate claim should be made from it. Phase 22
+is where this gets measured properly, across >=5 seeds per configuration,
+and that is the figure the paper must use.
+
+What IS established: the closed loop is functionally complete and
+verified end to end against a live network. What is NOT established is
+how often it succeeds.
+
 The historical record below is retained because the diagnosis is what
 produced the fix.
 
