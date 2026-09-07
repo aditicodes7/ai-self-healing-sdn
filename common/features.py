@@ -147,6 +147,19 @@ def _ewma_baseline(values: list[float | None], baseline_windows: int, alpha: flo
     return float(baseline)
 
 
+# Below this, a baseline is treated as too close to zero to divide by.
+# A ratio against a ~0 baseline is not "very large", it is undefined --
+# and the explicit None keeps that distinct from a genuine 0.0, matching
+# this module's "never silently substitute a number" policy.
+_MIN_BASELINE_FOR_RATIO = 1e-9
+
+
+def _safe_ratio(value: float | None, baseline: float | None) -> float | None:
+    if value is None or baseline is None or abs(baseline) < _MIN_BASELINE_FOR_RATIO:
+        return None
+    return float(value / baseline)
+
+
 def compute_feature_vector(
     history: list[RawWindow],
     index: int,
@@ -190,6 +203,30 @@ def compute_feature_vector(
         features[f"{metric}_ewma_dev"] = (
             (current - baseline) if (baseline is not None and current is not None) else None
         )
+
+        # SCALE-INVARIANT counterparts. Everything above is an absolute
+        # magnitude, so the same proportional degradation produces a
+        # completely different feature vector depending on the ambient
+        # level -- a link going 4ms -> 8ms and one going 40ms -> 80ms are
+        # both a doubling, but ewma_dev reports 4 vs 40.
+        #
+        # That is not hypothetical: Phase 22 measured the controller's
+        # own probe latency at a 2.6ms median during dataset generation
+        # and 40.9ms under the experiment harness's load, and the model
+        # -- whose most important features are latency-derived -- scored
+        # a healthy link (0.720) above one whose latency had gone
+        # 40.9 -> 342ms (0.290). Ratios transfer across operating points
+        # where absolute magnitudes do not.
+        #
+        # Kept ALONGSIDE the absolute features rather than replacing
+        # them: absolute level still carries real information (a link at
+        # 300ms is bad regardless of its history), and dropping it would
+        # trade one blind spot for another.
+        features[f"{metric}_ewma_ratio"] = _safe_ratio(current, baseline)
+        for w in windows:
+            features[f"{metric}_mean_ratio_{w}"] = _safe_ratio(
+                features[f"{metric}_mean_{w}"], baseline
+            )
 
     features["packet_rate"] = truncated[-1].packet_rate
     return features

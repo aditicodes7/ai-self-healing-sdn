@@ -177,3 +177,64 @@ def test_train_and_live_paths_produce_identical_feature_vectors():
     assert len(batch_results) == len(live_results) == len(full_history)
     for i, (batch_fv, live_fv) in enumerate(zip(batch_results, live_results)):
         assert batch_fv == live_fv, f"mismatch at index {i}: {batch_fv} != {live_fv}"
+
+
+def _steady_then_double(ambient_scale: float) -> dict:
+    """20 steady windows at `4 * scale` ms, then one at double that."""
+    history = [
+        RawWindow(timestamp=float(i), link_id="s1-s2", utilization=0.3, loss_rate=0.0,
+                  error_rate=0.0, latency_ms=4.0 * ambient_scale, packet_rate=100.0)
+        for i in range(20)
+    ]
+    history.append(
+        RawWindow(timestamp=20.0, link_id="s1-s2", utilization=0.3, loss_rate=0.0,
+                  error_rate=0.0, latency_ms=8.0 * ambient_scale, packet_rate=100.0)
+    )
+    return compute_feature_vector(history, len(history) - 1)
+
+
+def test_ratio_features_are_scale_invariant():
+    """The same proportional degradation must produce the same ratio
+    feature regardless of the ambient level. Phase 22 measured the
+    controller's own probe latency at a 2.6ms median during dataset
+    generation and 40.9ms under experiment load; absolute features could
+    not transfer across that gap."""
+    low = _steady_then_double(1.0)
+    high = _steady_then_double(10.0)
+
+    assert low["latency_ms_ewma_ratio"] == pytest.approx(2.0)
+    assert high["latency_ms_ewma_ratio"] == pytest.approx(2.0)
+    assert low["latency_ms_ewma_ratio"] == pytest.approx(high["latency_ms_ewma_ratio"])
+
+
+def test_absolute_features_are_not_scale_invariant():
+    """The complement of the test above: this is WHY the ratio features
+    were added, and if absolute features ever became scale-invariant the
+    reasoning above would need revisiting."""
+    low = _steady_then_double(1.0)
+    high = _steady_then_double(10.0)
+    assert low["latency_ms_ewma_dev"] == pytest.approx(4.0)
+    assert high["latency_ms_ewma_dev"] == pytest.approx(40.0)
+
+
+def test_ratio_is_none_when_baseline_is_zero():
+    """A ratio against a ~0 baseline is undefined, not enormous -- and
+    None must stay distinguishable from a real 0.0."""
+    history = [
+        RawWindow(timestamp=float(i), link_id="s1-s2", utilization=0.0, loss_rate=0.0,
+                  error_rate=0.0, latency_ms=0.0, packet_rate=0.0)
+        for i in range(21)
+    ]
+    features = compute_feature_vector(history, len(history) - 1)
+    assert features["latency_ms_ewma_ratio"] is None
+
+
+def test_ratio_is_none_before_baseline_is_established():
+    history = [
+        RawWindow(timestamp=float(i), link_id="s1-s2", utilization=0.3, loss_rate=0.0,
+                  error_rate=0.0, latency_ms=4.0, packet_rate=100.0)
+        for i in range(5)  # fewer than baseline_healthy_windows
+    ]
+    features = compute_feature_vector(history, len(history) - 1)
+    assert features["latency_ms_ewma_ratio"] is None
+    assert features["latency_ms_mean_ratio_3"] is None
