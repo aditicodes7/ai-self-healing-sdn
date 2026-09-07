@@ -332,3 +332,35 @@ executing the plan.
   quieter machine, and Phase 21 established that host load measurably
   moves this controller's own latency measurements -- so an unloaded
   control would have confounded every comparison against it.
+- 2026-09-07: The Phase 22 pilot (B1 vs P2, one seed) did its job and
+  blocked the full 180-trial run. It measured a real, severe fault
+  (throughput 4.72 -> 0.56 Mbps, RTT 6 -> 140 ms) but P2 behaved
+  identically to the do-nothing control: max probability on the badly
+  degraded link was 0.290 (below the 0.40 threshold) while a HEALTHY
+  link scored 0.720, despite the degraded link's latency going
+  40.9 -> 342.0 ms. Root cause is train/serve skew again, from a
+  different source than Phase 21's: `generate_dataset.py` assumes an
+  externally-running controller, and in Phase 8 that controller ran with
+  no inference service and no measurement load (median probe latency
+  2.6 ms). The experiment harness runs the service plus iperf3/ping, and
+  measures 40.9 ms before any fault -- ~16x outside the training range
+  on the feature family the model most depends on. Decision: regenerate
+  the dataset under deployment-matched conditions
+  (`ml/dataset/regenerate_matched.py`: inference service running for load
+  parity, controller as B1_SHORTEST_PATH so it predicts but never
+  remediates and cannot confound the fault labels) and retrain, rather
+  than retune thresholds against a distribution the model never learned.
+  Topology, traffic, fault schedule, seeds and label rules are unchanged
+  so the comparison with the Phase 8 model is like-for-like.
+- 2026-09-07: Derived per-link metrics are now persisted to the
+  `features` table by the telemetry collector. They had lived only in
+  memory, so `features.utilization` was NULL in every row (0 of 2000 in
+  the pilot): there was no record of what the system actually saw when it
+  made a decision, which made post-hoc analysis of an experiment
+  impossible and left the dashboard's link inspector permanently blank.
+- 2026-09-07: The experiment runner now joins the fault-injector thread
+  before tearing the network down. The pilot tore down while an injector
+  was still sleeping; it woke into a dead Mininet and crashed inside
+  recover() ("'NoneType' object has no attribute 'node'"), which also
+  meant the previous trial's fault was never formally recovered before
+  the next trial began.

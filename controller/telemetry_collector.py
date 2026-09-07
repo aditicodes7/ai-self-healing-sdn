@@ -397,6 +397,30 @@ class TelemetryCollector(app_manager.RyuApp):
             loss_rate=base.loss_rate,
         )
 
+        # Persist the derived metrics, not just the raw counters. Until
+        # Phase 22 these lived only in memory, so `features.utilization`
+        # was NULL for every row and there was no record of what the
+        # system actually saw when it made a decision -- which made
+        # post-hoc analysis of an experiment impossible and left the
+        # dashboard's link inspector permanently blank.
+        self._db.insert(
+            "features",
+            {
+                "timestamp": curr_row["timestamp"],
+                "link_id": link_id,
+                "window_s": int(self.interval_s),
+                "utilization": base.utilization,
+                "loss_rate": base.loss_rate,
+                "error_rate": base.error_rate,
+                "latency_ms": base.latency_ms,
+                "latency_is_estimate": 1,
+                "feature_json": json.dumps(
+                    {"switch_id": switch_id, "packet_rate": base.packet_rate}
+                ),
+                "data_source": DataSource.EMULATED_MININET.value,
+            },
+        )
+
         history_key = (link_id, switch_id)
         history = self._link_history.setdefault(history_key, [])
         history.append(base)

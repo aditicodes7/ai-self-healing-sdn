@@ -201,9 +201,10 @@ def run_trial(experiment_id: str, system: str, fault_type: str, seed: int,
 
         import threading
         fault_start = time.time()
-        threading.Thread(
+        fault_thread = threading.Thread(
             target=injector.inject, args=(sw_a, sw_b, fault_type, FAULT_DURATION_S), daemon=True
-        ).start()
+        )
+        fault_thread.start()
         log(f"  injected {fault_type} on {sw_a}-{sw_b}")
 
         if kill_service_mid_run and service.poll() is None:
@@ -215,8 +216,21 @@ def run_trial(experiment_id: str, system: str, fault_type: str, seed: int,
         during = _measure_flow(net, IPERF_SAMPLE_S, cfg.traffic.iperf3_port)
         log(f"  during fault: {during}")
 
+        # Let the fault run its full course and JOIN the injector thread
+        # before touching the network again. The pilot tore down while an
+        # injector was still sleeping; it then woke into a dead Mininet
+        # and crashed inside recover() ('NoneType' has no attribute
+        # 'node'), leaving the previous trial's fault notionally
+        # un-recovered as the next trial started.
         remaining = max(0.0, FAULT_DURATION_S - (time.time() - fault_start))
-        time.sleep(min(remaining, 60))
+        if remaining:
+            log(f"  waiting {remaining:.0f}s for the fault to complete and recover")
+            time.sleep(remaining)
+        fault_thread.join(timeout=60)
+        if fault_thread.is_alive():
+            log("  WARNING: injector thread did not finish; recording it")
+            record["injector_hung"] = True
+
         after = _measure_flow(net, IPERF_SAMPLE_S, cfg.traffic.iperf3_port)
 
         timeline = _timeline_from_db(db_path, fault_start)
