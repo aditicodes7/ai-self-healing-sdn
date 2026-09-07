@@ -333,6 +333,37 @@ sim-to-real gap on top of the queueing-delay one documented above, and
 should be stated in the technical paper's RL methodology section
 alongside it.
 
+## Phase 22: offline model metrics disagreed with live behaviour
+
+Two models were trained on the same topology, traffic, fault schedule,
+seeds and label rules, differing only in the conditions their telemetry
+was collected under and in the feature set:
+
+| | Phase 8 model | deployment-matched model |
+|---|---:|---:|
+| PR-AUC (own held-out test seeds) | 0.381 | 0.262 |
+| ROC-AUC | 0.828 | 0.714 |
+| detects the fault live, under experiment load | **no** | **yes** |
+
+The Phase 8 model scores better and does not work. Under identical live
+conditions it gave a max probability of 0.290 on a link whose latency
+had gone 40.9 -> 342 ms while scoring a HEALTHY link at 0.720; the
+matched model detected and remediated the same fault (recovery 77.1 s).
+
+Two things this does NOT establish, and which must not be claimed:
+  * that the matched model is "better" in a general sense. The two
+    PR-AUC figures come from different test distributions and are not
+    directly comparable. What is established is only that one detects
+    under deployment conditions and the other does not.
+  * that one live trial is a detection rate. It is one trial.
+
+What it does establish is methodological: for this system, held-out
+offline metrics collected under non-deployment conditions were an
+actively misleading guide to live behaviour, and the operating decision
+had to be made on the live objective. Any model-selection claim in the
+paper should be stated in those terms rather than as a straight
+accuracy comparison.
+
 ## Phase 21: the controller's own inference calls corrupt the latency it measures
 
 The closed loop was assembled and runs end-to-end against a live

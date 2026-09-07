@@ -27,6 +27,7 @@ made HERE, not a silent fillna(0) inside common/features.py itself.
 """
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import sys
@@ -227,8 +228,16 @@ def make_figures(results: dict, feature_order: list[str], best_name: str, figure
 
 
 def main() -> int:
+    # --dataset-dir keeps the Phase 8 dataset intact alongside Phase 22's
+    # deployment-matched one, so the two models stay directly comparable
+    # instead of one silently overwriting the other's provenance.
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--dataset-dir", default=str(REPO_ROOT / "results" / "raw" / "dataset"))
+    args = parser.parse_args()
+
     config = load_config()
-    dataset_dir = REPO_ROOT / "results" / "raw" / "dataset"
+    dataset_dir = Path(args.dataset_dir)
+    print(f"training from {dataset_dir}")
 
     train_rows = load_dataset(dataset_dir, TRAIN_SEEDS)
     test_rows = load_dataset(dataset_dir, TEST_SEEDS)

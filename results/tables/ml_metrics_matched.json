@@ -1,0 +1,229 @@
+{
+  "chosen_model": "histgradientboosting",
+  "threshold": 0.4,
+  "threshold_justification": "Fixed at config.ml.threshold, the same value the live persistence/stability decision logic (Phase 12) uses -- so reported precision/recall reflect exactly the operating point the closed loop runs at, not a metric re-optimized after the fact. This value sits outside persistence.uncertainty_band, avoiding the abstention band by construction (see tests/unit/test_config.py::test_ml_threshold_within_bounds).",
+  "train_seeds": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "test_seeds": [
+    7,
+    8
+  ],
+  "split_method": "by_run_not_by_row",
+  "dropped_zero_variance_features": [
+    "loss_rate_mean_3",
+    "loss_rate_std_3",
+    "loss_rate_slope_3",
+    "loss_rate_mean_5",
+    "loss_rate_std_5",
+    "loss_rate_slope_5",
+    "loss_rate_mean_10",
+    "loss_rate_std_10",
+    "loss_rate_slope_10",
+    "loss_rate_diff_1",
+    "loss_rate_ewma_dev",
+    "loss_rate_ewma_ratio",
+    "loss_rate_mean_ratio_3",
+    "loss_rate_mean_ratio_5",
+    "loss_rate_mean_ratio_10",
+    "error_rate_mean_3",
+    "error_rate_std_3",
+    "error_rate_slope_3",
+    "error_rate_mean_5",
+    "error_rate_std_5",
+    "error_rate_slope_5",
+    "error_rate_mean_10",
+    "error_rate_std_10",
+    "error_rate_slope_10",
+    "error_rate_diff_1",
+    "error_rate_ewma_dev",
+    "error_rate_ewma_ratio",
+    "error_rate_mean_ratio_3",
+    "error_rate_mean_ratio_5",
+    "error_rate_mean_ratio_10"
+  ],
+  "dropped_features_reason": "loss_rate/error_rate-derived features are exactly 0.0 for every row: OVS's rx_dropped/rx_errors port counters never reflect tc-netem-injected loss/corruption on Mininet's veth-based links, confirmed empirically. See docs/limitations.md.",
+  "models": {
+    "histgradientboosting": {
+      "threshold": 0.4,
+      "precision": 0.11148086522462562,
+      "recall": 0.41875,
+      "f1": 0.17608409986859397,
+      "roc_auc": 0.7139400569916547,
+      "pr_auc": 0.26153623873091303,
+      "confusion_matrix": [
+        [
+          9292,
+          534
+        ],
+        [
+          93,
+          67
+        ]
+      ],
+      "confusion_matrix_labels": [
+        "negative(0)",
+        "positive(1)"
+      ],
+      "n_test_samples": 9986,
+      "n_test_positive": 160,
+      "train_time_s": 2.508105993270874
+    },
+    "randomforest": {
+      "threshold": 0.4,
+      "precision": 0.5087719298245614,
+      "recall": 0.18125,
+      "f1": 0.2672811059907834,
+      "roc_auc": 0.7064738957866884,
+      "pr_auc": 0.21494572229131945,
+      "confusion_matrix": [
+        [
+          9798,
+          28
+        ],
+        [
+          131,
+          29
+        ]
+      ],
+      "confusion_matrix_labels": [
+        "negative(0)",
+        "positive(1)"
+      ],
+      "n_test_samples": 9986,
+      "n_test_positive": 160,
+      "train_time_s": 3.5697412490844727
+    },
+    "logisticregression_baseline": {
+      "threshold": 0.4,
+      "precision": 0.013804611650485438,
+      "recall": 0.56875,
+      "f1": 0.026954976303317536,
+      "roc_auc": 0.5033870598412375,
+      "pr_auc": 0.028079953682719157,
+      "confusion_matrix": [
+        [
+          3325,
+          6501
+        ],
+        [
+          69,
+          91
+        ]
+      ],
+      "confusion_matrix_labels": [
+        "negative(0)",
+        "positive(1)"
+      ],
+      "n_test_samples": 9986,
+      "n_test_positive": 160,
+      "train_time_s": 0.29230189323425293
+    }
+  },
+  "permutation_importance": {
+    "feature_names": [
+      "utilization_mean_3",
+      "utilization_std_3",
+      "utilization_slope_3",
+      "utilization_mean_5",
+      "utilization_std_5",
+      "utilization_slope_5",
+      "utilization_mean_10",
+      "utilization_std_10",
+      "utilization_slope_10",
+      "utilization_diff_1",
+      "utilization_ewma_dev",
+      "utilization_ewma_ratio",
+      "utilization_mean_ratio_3",
+      "utilization_mean_ratio_5",
+      "utilization_mean_ratio_10",
+      "latency_ms_mean_3",
+      "latency_ms_std_3",
+      "latency_ms_slope_3",
+      "latency_ms_mean_5",
+      "latency_ms_std_5",
+      "latency_ms_slope_5",
+      "latency_ms_mean_10",
+      "latency_ms_std_10",
+      "latency_ms_slope_10",
+      "latency_ms_diff_1",
+      "latency_ms_ewma_dev",
+      "latency_ms_ewma_ratio",
+      "latency_ms_mean_ratio_3",
+      "latency_ms_mean_ratio_5",
+      "latency_ms_mean_ratio_10",
+      "packet_rate"
+    ],
+    "importances_mean": [
+      -0.005745678089794237,
+      0.013545305664647095,
+      0.0005737376310880948,
+      0.0034676917072166856,
+      0.002429540031908384,
+      0.015865230282586816,
+      0.011337512892727431,
+      0.007898603937032673,
+      0.060667918325607216,
+      0.02058273383163293,
+      0.009258266698792955,
+      0.005472533935404242,
+      0.0019709943005805476,
+      -0.002905382546935953,
+      0.014827555333053865,
+      0.08156952693112583,
+      0.004629788112265143,
+      0.007192908089123576,
+      0.0012145370169791947,
+      0.029469364408851794,
+      0.09217777782485508,
+      0.07062611547730022,
+      0.01417978580347735,
+      0.12208796386615779,
+      -0.02199793595315976,
+      0.06685162880099754,
+      -0.0053267475921846275,
+      0.024425984394139365,
+      0.0018036825348358265,
+      0.03514867614226642,
+      0.000605783849121777
+    ],
+    "importances_std": [
+      0.004229075656819445,
+      0.0031557003546675557,
+      0.001632306819384507,
+      0.004303747766167395,
+      0.0016570368924073088,
+      0.0033576490893574944,
+      0.005985479637461765,
+      0.008939987328832413,
+      0.018554456806972663,
+      0.002279887754824331,
+      0.000896560802383447,
+      0.004035025329028287,
+      0.0022570515042869502,
+      0.00405031415422998,
+      0.004645476780626161,
+      0.008482770782361239,
+      0.00310987443656005,
+      0.004763666583398827,
+      0.005994529212360136,
+      0.007593010630767573,
+      0.006459624692932465,
+      0.011077156174178293,
+      0.008599406822000883,
+      0.013974853621258672,
+      0.005862780638011518,
+      0.017766352908771776,
+      0.0014371940777904843,
+      0.0038657478485442332,
+      0.003527078259228243,
+      0.009017319695606337,
+      0.005424418511810721
+    ]
+  }
+}

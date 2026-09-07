@@ -364,3 +364,18 @@ executing the plan.
   recover() ("'NoneType' object has no attribute 'node'"), which also
   meant the previous trial's fault was never formally recovered before
   the next trial began.
+- 2026-09-07: Kept the deployment-matched model (histgradientboosting,
+  scale-invariant features) despite it scoring WORSE offline than the
+  Phase 8 model: PR-AUC 0.262 vs 0.381, ROC-AUC 0.714 vs 0.828. Those
+  two numbers are computed on different test distributions and are not
+  directly comparable, and offline metrics are only a proxy for the
+  thing that matters. Under identical live experiment conditions the old
+  model did not detect the fault at all (max P=0.290 on a link whose
+  latency had gone 40.9 -> 342 ms, while a HEALTHY link scored 0.720),
+  and the matched model detected and remediated it
+  (detected=True, recovery 77.1 s, 2 reroutes). Decision rule applied:
+  when an offline proxy and the live objective disagree, believe the
+  live objective and report both. The Phase 8 dataset, its model
+  artefacts and its metrics are all retained (results/raw/dataset,
+  models_matched/, results/tables/ml_metrics_matched.json) so the
+  comparison stays reproducible rather than being overwritten.

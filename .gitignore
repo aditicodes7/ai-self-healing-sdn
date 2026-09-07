@@ -18,3 +18,4 @@ results/processed/*
 !results/raw/.gitkeep
 !results/processed/.gitkeep
 .DS_Store
+models_matched/*.joblib

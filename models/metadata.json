@@ -1,6 +1,6 @@
 {
   "sklearn_version": "1.9.0",
-  "chosen_model": "randomforest",
+  "chosen_model": "histgradientboosting",
   "feature_order": [
     "utilization_mean_3",
     "utilization_std_3",
@@ -13,6 +13,10 @@
     "utilization_slope_10",
     "utilization_diff_1",
     "utilization_ewma_dev",
+    "utilization_ewma_ratio",
+    "utilization_mean_ratio_3",
+    "utilization_mean_ratio_5",
+    "utilization_mean_ratio_10",
     "latency_ms_mean_3",
     "latency_ms_std_3",
     "latency_ms_slope_3",
@@ -24,6 +28,10 @@
     "latency_ms_slope_10",
     "latency_ms_diff_1",
     "latency_ms_ewma_dev",
+    "latency_ms_ewma_ratio",
+    "latency_ms_mean_ratio_3",
+    "latency_ms_mean_ratio_5",
+    "latency_ms_mean_ratio_10",
     "packet_rate"
   ],
   "dropped_zero_variance_features": [
@@ -38,6 +46,10 @@
     "loss_rate_slope_10",
     "loss_rate_diff_1",
     "loss_rate_ewma_dev",
+    "loss_rate_ewma_ratio",
+    "loss_rate_mean_ratio_3",
+    "loss_rate_mean_ratio_5",
+    "loss_rate_mean_ratio_10",
     "error_rate_mean_3",
     "error_rate_std_3",
     "error_rate_slope_3",
@@ -48,7 +60,11 @@
     "error_rate_std_10",
     "error_rate_slope_10",
     "error_rate_diff_1",
-    "error_rate_ewma_dev"
+    "error_rate_ewma_dev",
+    "error_rate_ewma_ratio",
+    "error_rate_mean_ratio_3",
+    "error_rate_mean_ratio_5",
+    "error_rate_mean_ratio_10"
   ],
   "train_seeds": [
     1,
@@ -65,7 +81,7 @@
   "random_state": 42,
   "threshold": 0.4,
   "label_horizon_s": 10,
-  "git_commit": "e729a8ae851f2ec3824750abd3626f659bf7d399",
-  "trained_at": 1788783790.8433769,
+  "git_commit": "bdf48d2aa7a28b3edeace90cbdab9f1418dbb113",
+  "trained_at": 1788793500.443221,
   "data_source": "emulated_mininet"
 }

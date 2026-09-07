@@ -1,5 +1,5 @@
 {
-  "chosen_model": "randomforest",
+  "chosen_model": "histgradientboosting",
   "threshold": 0.4,
   "threshold_justification": "Fixed at config.ml.threshold, the same value the live persistence/stability decision logic (Phase 12) uses -- so reported precision/recall reflect exactly the operating point the closed loop runs at, not a metric re-optimized after the fact. This value sits outside persistence.uncertainty_band, avoiding the abstention band by construction (see tests/unit/test_config.py::test_ml_threshold_within_bounds).",
   "train_seeds": [
@@ -27,6 +27,10 @@
     "loss_rate_slope_10",
     "loss_rate_diff_1",
     "loss_rate_ewma_dev",
+    "loss_rate_ewma_ratio",
+    "loss_rate_mean_ratio_3",
+    "loss_rate_mean_ratio_5",
+    "loss_rate_mean_ratio_10",
     "error_rate_mean_3",
     "error_rate_std_3",
     "error_rate_slope_3",
@@ -37,84 +41,88 @@
     "error_rate_std_10",
     "error_rate_slope_10",
     "error_rate_diff_1",
-    "error_rate_ewma_dev"
+    "error_rate_ewma_dev",
+    "error_rate_ewma_ratio",
+    "error_rate_mean_ratio_3",
+    "error_rate_mean_ratio_5",
+    "error_rate_mean_ratio_10"
   ],
   "dropped_features_reason": "loss_rate/error_rate-derived features are exactly 0.0 for every row: OVS's rx_dropped/rx_errors port counters never reflect tc-netem-injected loss/corruption on Mininet's veth-based links, confirmed empirically. See docs/limitations.md.",
   "models": {
     "histgradientboosting": {
       "threshold": 0.4,
-      "precision": 0.2206703910614525,
-      "recall": 0.49375,
-      "f1": 0.305019305019305,
-      "roc_auc": 0.8362161355615528,
-      "pr_auc": 0.3702504581630544,
+      "precision": 0.11148086522462562,
+      "recall": 0.41875,
+      "f1": 0.17608409986859397,
+      "roc_auc": 0.7139400569916547,
+      "pr_auc": 0.26153623873091303,
       "confusion_matrix": [
         [
-          9355,
-          279
+          9292,
+          534
         ],
         [
-          81,
-          79
+          93,
+          67
         ]
       ],
       "confusion_matrix_labels": [
         "negative(0)",
         "positive(1)"
       ],
-      "n_test_samples": 9794,
+      "n_test_samples": 9986,
       "n_test_positive": 160,
-      "train_time_s": 2.0348947048187256
+      "train_time_s": 2.508105993270874
     },
     "randomforest": {
       "threshold": 0.4,
-      "precision": 0.5578947368421052,
-      "recall": 0.33125,
-      "f1": 0.41568627450980394,
-      "roc_auc": 0.8284344509030517,
-      "pr_auc": 0.38140736772252576,
+      "precision": 0.5087719298245614,
+      "recall": 0.18125,
+      "f1": 0.2672811059907834,
+      "roc_auc": 0.7064738957866884,
+      "pr_auc": 0.21494572229131945,
       "confusion_matrix": [
         [
-          9592,
-          42
+          9798,
+          28
         ],
         [
-          107,
-          53
+          131,
+          29
         ]
       ],
       "confusion_matrix_labels": [
         "negative(0)",
         "positive(1)"
       ],
-      "n_test_samples": 9794,
+      "n_test_samples": 9986,
       "n_test_positive": 160,
-      "train_time_s": 2.6673080921173096
+      "train_time_s": 3.5697412490844727
     },
     "logisticregression_baseline": {
       "threshold": 0.4,
-      "precision": 0.017266000259639102,
-      "recall": 0.83125,
-      "f1": 0.03382932722879308,
-      "roc_auc": 0.5652895993356861,
-      "pr_auc": 0.06339007565991403,
+      "precision": 0.013804611650485438,
+      "recall": 0.56875,
+      "f1": 0.026954976303317536,
+      "roc_auc": 0.5033870598412375,
+      "pr_auc": 0.028079953682719157,
       "confusion_matrix": [
         [
-          2064,
-          7570
+          3325,
+          6501
         ],
         [
-          27,
-          133
+          69,
+          91
         ]
       ],
       "confusion_matrix_labels": [
         "negative(0)",
         "positive(1)"
       ],
-      "n_test_samples": 9794,
+      "n_test_samples": 9986,
       "n_test_positive": 160,
-      "train_time_s": 0.21281218528747559
+      "train_time_s": 0.29230189323425293
     }
   },
   "permutation_importance": {
@@ -130,6 +138,10 @@
       "utilization_slope_10",
       "utilization_diff_1",
       "utilization_ewma_dev",
+      "utilization_ewma_ratio",
+      "utilization_mean_ratio_3",
+      "utilization_mean_ratio_5",
+      "utilization_mean_ratio_10",
       "latency_ms_mean_3",
       "latency_ms_std_3",
       "latency_ms_slope_3",
@@ -141,57 +153,77 @@
       "latency_ms_slope_10",
       "latency_ms_diff_1",
       "latency_ms_ewma_dev",
+      "latency_ms_ewma_ratio",
+      "latency_ms_mean_ratio_3",
+      "latency_ms_mean_ratio_5",
+      "latency_ms_mean_ratio_10",
       "packet_rate"
     ],
     "importances_mean": [
-      0.008441724276522605,
-      0.007318035345721929,
-      -0.0024950045153132815,
-      0.005443760747964754,
-      0.013362626345915984,
-      0.005071732272548063,
-      0.008004615136086468,
-      0.007588606369446587,
-      0.048738051630243674,
-      0.0029328865096380054,
-      -0.003438429696061085,
-      0.17776579433951628,
-      0.050676416593431785,
-      0.06448993014238807,
-      0.07313593004275769,
-      0.07403265399574029,
-      0.19833791200313405,
-      0.019020297590699436,
-      0.0451571640933751,
-      0.22861565380846605,
-      0.02772217875214068,
-      0.07471886724868707,
-      0.016253063989565792
+      -0.005745678089794237,
+      0.013545305664647095,
+      0.0005737376310880948,
+      0.0034676917072166856,
+      0.002429540031908384,
+      0.015865230282586816,
+      0.011337512892727431,
+      0.007898603937032673,
+      0.060667918325607216,
+      0.02058273383163293,
+      0.009258266698792955,
+      0.005472533935404242,
+      0.0019709943005805476,
+      -0.002905382546935953,
+      0.014827555333053865,
+      0.08156952693112583,
+      0.004629788112265143,
+      0.007192908089123576,
+      0.0012145370169791947,
+      0.029469364408851794,
+      0.09217777782485508,
+      0.07062611547730022,
+      0.01417978580347735,
+      0.12208796386615779,
+      -0.02199793595315976,
+      0.06685162880099754,
+      -0.0053267475921846275,
+      0.024425984394139365,
+      0.0018036825348358265,
+      0.03514867614226642,
+      0.000605783849121777
     ],
     "importances_std": [
-      0.004321460676407213,
-      0.0013855427204877257,
-      0.0009310186175040022,
-      0.004024268522822124,
-      0.001281016708951976,
-      0.003280998047410413,
-      0.005272696402080633,
-      0.002202768359975802,
-      0.01207097976713372,
-      0.0010302546755217796,
-      0.0027172925763678385,
-      0.004886395358228224,
-      0.011060696412069077,
-      0.009804439399347727,
-      0.011099378537428237,
-      0.012536684454387593,
-      0.009913805022937943,
-      0.005129652991862901,
-      0.01057806507274158,
-      0.01510694597104803,
-      0.0029045382928324696,
-      0.010151070915090701,
-      0.003219932307487469
+      0.004229075656819445,
+      0.0031557003546675557,
+      0.001632306819384507,
+      0.004303747766167395,
+      0.0016570368924073088,
+      0.0033576490893574944,
+      0.005985479637461765,
+      0.008939987328832413,
+      0.018554456806972663,
+      0.002279887754824331,
+      0.000896560802383447,
+      0.004035025329028287,
+      0.0022570515042869502,
+      0.00405031415422998,
+      0.004645476780626161,
+      0.008482770782361239,
+      0.00310987443656005,
+      0.004763666583398827,
+      0.005994529212360136,
+      0.007593010630767573,
+      0.006459624692932465,
+      0.011077156174178293,
+      0.008599406822000883,
+      0.013974853621258672,
+      0.005862780638011518,
+      0.017766352908771776,
+      0.0014371940777904843,
+      0.0038657478485442332,
+      0.003527078259228243,
+      0.009017319695606337,
+      0.005424418511810721
     ]
   }
 }
