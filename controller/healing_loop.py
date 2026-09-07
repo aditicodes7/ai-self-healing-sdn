@@ -39,6 +39,7 @@ import uuid
 
 from common.logging_setup import configure_logging
 from common.schema import IncidentStatus, VerificationClassification
+from controller.baselines.rule_based import evaluate_current_conditions
 from controller.path_computer import (
     LinkMetrics,
     compute_path_cost,
@@ -74,7 +75,24 @@ class HealingLoop:
         weight_hop_count: float,
         sleep_fn=time.sleep,
         spawn_fn=_run_inline,
+        system: str = "P2_ML_RL",
+        b2_utilization_threshold: float = 0.80,
+        b2_loss_threshold: float = 0.10,
     ):
+        # Which system-under-test this controller instance is running as
+        # (Phase 22). The ladder B1 -> B2 -> P1 -> P2 adds exactly one
+        # mechanism per rung so a measured difference is attributable:
+        #   B1_SHORTEST_PATH  install once, never react
+        #   B2_RULE_BASED     react to CURRENT thresholds, no prediction,
+        #                     no persistence, no learned policy
+        #   P1_ML_HEURISTIC   prediction + persistence + weighted-cost path
+        #   P2_ML_RL          prediction + persistence + RL-chosen path
+        # P1 vs P2 is selected by whether the caller passes an rl_client
+        # into the RemediationManager, so this class only has to know
+        # about B1 and B2.
+        self.system = system
+        self.b2_utilization_threshold = b2_utilization_threshold
+        self.b2_loss_threshold = b2_loss_threshold
         self.db = db
         self.persistence = persistence
         self.stability = stability
@@ -145,6 +163,15 @@ class HealingLoop:
         """Called for every successful degradation prediction. Fast and
         non-blocking: the expensive remediate+verify work is handed to
         spawn_fn."""
+        if self.system == "B1_SHORTEST_PATH":
+            # The do-nothing control: a path is installed once and never
+            # revisited, so the fault's full cost is what gets measured.
+            return
+
+        if self.system == "B2_RULE_BASED":
+            self._on_prediction_rule_based(link_id, timestamp)
+            return
+
         self.persistence.record(link_id, probability)
         result = self.persistence.evaluate(link_id)
 
@@ -229,6 +256,30 @@ class HealingLoop:
 
         self._remediation_in_flight = True
         self.spawn_fn(self._remediate_and_verify, link_id, probability, decision.reason, timestamp)
+
+    def _on_prediction_rule_based(self, link_id: str, timestamp: float | None) -> None:
+        """B2: react to CURRENT measured conditions only.
+
+        Deliberately ignores the prediction it was handed -- that is the
+        whole point of the baseline. It also skips persistence and
+        stability, so E4 can measure what those gates are worth. It is
+        driven off the prediction tick purely because that is the
+        controller's existing periodic hook; no probability is read.
+        """
+        if self.active_path is None or self._remediation_in_flight:
+            return
+
+        decision = evaluate_current_conditions(
+            self.active_path,
+            self.link_metrics_provider(),
+            self.b2_utilization_threshold,
+            self.b2_loss_threshold,
+        )
+        if not decision.should_reroute:
+            return
+
+        self._remediation_in_flight = True
+        self.spawn_fn(self._remediate_and_verify, link_id, 0.0, decision.reason, timestamp)
 
     # -- the slow half (runs in its own greenthread live) -------------------
 

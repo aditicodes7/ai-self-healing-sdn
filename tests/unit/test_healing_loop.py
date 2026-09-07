@@ -408,6 +408,65 @@ def test_no_remediation_when_every_alternative_crosses_the_bad_link(db, flow_ctx
     assert len(remediation.calls) == before, "should not attempt an impossible reroute"
 
 
+# -- systems under test (Phase 22) ---------------------------------------
+
+
+def test_b1_never_reroutes(db, flow_ctx):
+    """B1 is the do-nothing control: it installs a path once and lets the
+    fault's full cost be measured."""
+    remediation = FakeRemediation(_graph())
+    loop = _make_loop(db, flow_ctx, remediation=remediation)
+    loop.system = "B1_SHORTEST_PATH"
+    loop.install_initial_path()
+    before = len(remediation.calls)
+
+    _push(loop, loop._active_path_link_ids()[0], 0.99, times=10)
+
+    assert len(remediation.calls) == before, "B1 must never react to a prediction"
+
+
+def test_b2_ignores_prediction_and_reacts_to_current_metrics(db, flow_ctx):
+    """B2 must reroute on measured conditions alone -- a sky-high
+    prediction with healthy links must NOT move it."""
+    remediation = FakeRemediation(_graph())
+    loop = _make_loop(db, flow_ctx, remediation=remediation)
+    loop.system = "B2_RULE_BASED"
+    loop.install_initial_path()
+    before = len(remediation.calls)
+
+    # Certain prediction, but every link is measured healthy.
+    _push(loop, loop._active_path_link_ids()[0], 0.99, times=6)
+    assert len(remediation.calls) == before, "B2 must ignore predictions"
+
+
+def test_b2_reroutes_when_measured_utilization_exceeds_threshold(db, flow_ctx):
+    graph = _graph()
+    remediation = FakeRemediation(graph)
+    metrics = {"s1-s3": LinkMetrics(utilization=0.95, loss_rate=0.0, latency_ms=5.0)}
+    loop = _make_loop(db, flow_ctx, remediation=remediation, link_metrics=metrics)
+    loop.system = "B2_RULE_BASED"
+    loop.b2_utilization_threshold = 0.80
+    loop.install_initial_path()
+    assert "s1-s3" in loop._active_path_link_ids()
+    before = len(remediation.calls)
+
+    # Probability is irrelevant to B2; the measured 0.95 utilization is not.
+    loop.on_prediction("s1-s3", 0.0)
+
+    assert len(remediation.calls) > before, "B2 should react to measured congestion"
+
+
+def test_p1_and_p2_differ_only_by_rl_client(db, flow_ctx):
+    """P1 is P2 without an RL client, so the healing loop itself must not
+    branch on the distinction -- otherwise E6's comparison would be
+    measuring more than path selection."""
+    loop = _make_loop(db, flow_ctx)
+    for system in ("P1_ML_HEURISTIC", "P2_ML_RL"):
+        loop.system = system
+        loop.install_initial_path()
+        assert loop.active_path is not None
+
+
 # -- measurement ---------------------------------------------------------
 
 

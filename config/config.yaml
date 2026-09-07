@@ -98,6 +98,14 @@ path:
     loss: 2.0
     hop_count: 0.25
 
+experiment:
+  # Which system-under-test this controller instance runs as (Phase 22):
+  # B1_SHORTEST_PATH | B2_RULE_BASED | P1_ML_HEURISTIC | P2_ML_RL.
+  # The experiment harness generates a per-trial config and points the
+  # controller at it via AI_SDN_CONFIG, so the tracked default here is
+  # simply the full system.
+  system: P2_ML_RL
+
 baselines:
   # B2 (rule-based reactive, controller/baselines/rule_based.py): reroute
   # if a link's CURRENT (not predicted, not persisted) utilization/loss

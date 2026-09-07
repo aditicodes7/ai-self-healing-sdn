@@ -302,3 +302,33 @@ executing the plan.
   deliberately NOT relaxed to compensate; weakening it would have
   hollowed out a mechanism the project claims as a distinguishing
   element.
+- 2026-09-07: Phase 22's eight experiments were not recorded anywhere in
+  the repo (the original enumeration was lost when the working
+  conversation compacted), so they were re-derived from the claims the
+  project actually has to support and written down in
+  `experiments/definitions.py` -- each with the claim it exists to test,
+  so nothing is run and no figure is drawn without a stated reason. The
+  systems form a ladder (B1 static -> B2 reactive thresholds -> P1
+  ML+heuristic -> P2 ML+RL) that adds exactly one mechanism per rung, so
+  a difference between adjacent rungs is attributable to that mechanism.
+  180 trials at >=5 seeds each.
+- 2026-09-07: `load_config()` now honours an `AI_SDN_CONFIG` environment
+  variable. The Ryu controller is launched as a subprocess and calls
+  `load_config()` with no arguments, so the experiment harness had no
+  other way to run the same controller as B1/B2/P1/P2 without mutating
+  the tracked config file. Each trial writes its own complete config into
+  its results directory, so any recorded number can be traced back to the
+  exact settings that produced it.
+- 2026-09-07: System selection lives in `healing_loop.py` for B1/B2 only.
+  P1 vs P2 is expressed purely as "was an rl_client supplied", reusing
+  the safety-gate fallback path that already exists, so the E6 ablation
+  differs in path SELECTION and nothing else. B1 returns immediately from
+  on_prediction (the do-nothing control); B2 ignores the probability
+  entirely and calls `evaluate_current_conditions` on measured metrics,
+  bypassing persistence and stability -- which is what makes E4 and E5
+  able to measure what those gates are worth.
+- 2026-09-07: The inference service is started for EVERY trial including
+  B1, which never queries it. Leaving it out would give the B1 arm a
+  quieter machine, and Phase 21 established that host load measurably
+  moves this controller's own latency measurements -- so an unloaded
+  control would have confounded every comparison against it.

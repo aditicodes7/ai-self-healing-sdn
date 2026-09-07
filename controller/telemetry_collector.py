@@ -166,7 +166,16 @@ class TelemetryCollector(app_manager.RyuApp):
             hard_timeout_s=cfg.flow.hard_timeout_s,
             idle_timeout_s=cfg.flow.idle_timeout_s,
         )
-        rl_client = RLClient(cfg.ml_rl_service.host, cfg.ml_rl_service.port, cfg.rl.timeout_ms)
+        # P1 vs P2 differ ONLY in who chooses the path, so P1 is exactly
+        # P2 with no RL client -- the fallback the safety gate already
+        # exercises. B1/B2 never consult the policy either.
+        system = cfg.experiment.system
+        rl_client = (
+            RLClient(cfg.ml_rl_service.host, cfg.ml_rl_service.port, cfg.rl.timeout_ms)
+            if system == "P2_ML_RL"
+            else None
+        )
+        logger.info("running as system-under-test", extra={"system": system})
         remediation = RemediationManager(
             self._db, flow_manager,
             k_shortest=cfg.path.k_shortest,
@@ -213,6 +222,9 @@ class TelemetryCollector(app_manager.RyuApp):
             # do the same.
             sleep_fn=hub.sleep,
             spawn_fn=hub.spawn,
+            system=system,
+            b2_utilization_threshold=cfg.baselines.b2_utilization_threshold,
+            b2_loss_threshold=cfg.baselines.b2_loss_threshold,
         )
 
     def _managed_flow_ctx(self) -> FlowContext:

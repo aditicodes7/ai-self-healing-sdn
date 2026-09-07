@@ -7,6 +7,7 @@ surfacing as a KeyError deep inside a controller or training script.
 from __future__ import annotations
 
 import dataclasses
+import os
 from pathlib import Path
 from typing import Any
 
@@ -96,6 +97,11 @@ class PathWeightsConfig:
 class PathConfig:
     k_shortest: int
     weights: PathWeightsConfig
+
+
+@dataclasses.dataclass(frozen=True)
+class ExperimentConfig:
+    system: str
 
 
 @dataclasses.dataclass(frozen=True)
@@ -193,6 +199,7 @@ class Config:
     stability: StabilityConfig
     path: PathConfig
     baselines: BaselinesConfig
+    experiment: ExperimentConfig
     rl: RLConfig
     flow: FlowConfig
     verify: VerifyConfig
@@ -214,6 +221,21 @@ def _get(d: dict, key: str, section: str) -> Any:
 
 
 def load_config(path: str | Path | None = None) -> Config:
+    """Resolution order: explicit `path`, then the AI_SDN_CONFIG
+    environment variable, then config/config.yaml.
+
+    AI_SDN_CONFIG exists so an out-of-process component -- notably the
+    Ryu controller, which is launched as a subprocess and calls
+    load_config() with no arguments -- can be pointed at a variant
+    config. Phase 22's experiment harness uses it to run the same
+    controller as B1/B2/P1/P2 without editing the tracked config file,
+    which keeps each trial's exact settings reproducible from its own
+    generated file.
+    """
+    if path is None:
+        env_path = os.environ.get("AI_SDN_CONFIG")
+        if env_path:
+            path = env_path
     cfg_path = Path(path) if path is not None else _DEFAULT_CONFIG_PATH
     if not cfg_path.exists():
         raise ConfigError(f"config file not found: {cfg_path}")
@@ -237,6 +259,7 @@ def load_config(path: str | Path | None = None) -> Config:
         stability = _get(raw, "stability", "root")
         path_cfg = _get(raw, "path", "root")
         baselines = _get(raw, "baselines", "root")
+        experiment = _get(raw, "experiment", "root")
         rl = _get(raw, "rl", "root")
         flow = _get(raw, "flow", "root")
         verify = _get(raw, "verify", "root")
@@ -303,6 +326,9 @@ def load_config(path: str | Path | None = None) -> Config:
             path=PathConfig(
                 k_shortest=_get(path_cfg, "k_shortest", "path"),
                 weights=PathWeightsConfig(**_get(path_cfg, "weights", "path")),
+            ),
+            experiment=ExperimentConfig(
+                system=_get(experiment, "system", "experiment"),
             ),
             baselines=BaselinesConfig(
                 b2_utilization_threshold=_get(baselines, "b2_utilization_threshold", "baselines"),
