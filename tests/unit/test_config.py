@@ -1,4 +1,5 @@
 import dataclasses
+import re
 from pathlib import Path
 
 import pytest
@@ -40,8 +41,21 @@ def test_persistence_uncertainty_band_ordered_and_typed():
     config = load_config()
     low, high = config.persistence.uncertainty_band
     assert isinstance(low, float) and isinstance(high, float)
-    assert low < high
-    assert low == 0.45 and high == 0.60
+    assert 0.0 <= low < high <= 1.0
+
+
+def test_decision_rule_is_monotonic():
+    """healthy -> uncertain -> degraded must be ordered. The band has to
+    sit at or below ml.threshold; if it sat above (as the original
+    [0.45, 0.60] band did once the threshold moved to 0.40), a 0.42
+    reading would count as degraded while a higher 0.50 reading
+    abstained."""
+    config = load_config()
+    low, high = config.persistence.uncertainty_band
+    assert high <= config.ml.threshold, (
+        f"uncertainty_band upper edge ({high}) must not exceed ml.threshold "
+        f"({config.ml.threshold}), or the decision rule is non-monotonic"
+    )
 
 
 def test_persistence_window_and_consecutive():
@@ -100,10 +114,17 @@ def test_malformed_yaml_missing_section_raises(tmp_path):
 
 
 def test_malformed_uncertainty_band_raises(tmp_path):
+    # Rewrite whatever band the config currently declares into a reversed
+    # one, rather than matching hardcoded values -- pinning the literal
+    # here meant this test silently became a no-op the first time the
+    # band was retuned (Phase 21), passing without asserting anything.
     good = CONFIG_PATH.read_text()
-    bad = good.replace(
-        "uncertainty_band: [0.45, 0.60]", "uncertainty_band: [0.60, 0.45]"
+    bad, n = re.subn(
+        r"uncertainty_band: \[\s*[\d.]+\s*,\s*[\d.]+\s*\]",
+        "uncertainty_band: [0.60, 0.45]",
+        good,
     )
+    assert n == 1, "expected exactly one uncertainty_band entry to rewrite"
     bad_path = tmp_path / "bad_config.yaml"
     bad_path.write_text(bad)
     with pytest.raises(ConfigError):

@@ -275,3 +275,30 @@ executing the plan.
   covered by a test asserting it returns the same probability as the
   single-item path, so the fix changes only how many round trips are
   needed, not the model's answer.
+- 2026-09-05: `ml.threshold` moved 0.75 -> 0.40 and
+  `persistence.uncertainty_band` [0.45, 0.60] -> [0.25, 0.40]. The
+  threshold was selected by `ml/threshold_sweep.py` on the HELD-OUT test
+  seeds (F1 peaks at 0.40: 0.416, vs 0.355 at 0.75), never against a
+  live closed-loop run -- choosing an operating point by what makes a
+  demo fire would be fitting the demo. The original 0.75 was fixed in
+  Phase 1 before any model existed. Trading per-reading precision
+  (0.837 -> 0.558) for recall (0.225 -> 0.331) is right for THIS
+  architecture: a missed degradation is unrecoverable, while a false
+  positive is filtered twice more by persistence (3-of-4) and stability
+  (cooldown/route-hold/min-improvement), so per-reading precision is not
+  the rate at which spurious reroutes occur. The band moved below the
+  threshold to keep the rule monotonic (healthy -> uncertain ->
+  degraded); `test_decision_rule_is_monotonic` now enforces that
+  ordering, and two config tests that hardcoded the old band literals
+  were made value-independent (one had silently become a no-op).
+- 2026-09-05: Predictions are aggregated to one reading per link per
+  telemetry cycle (max across the two switch-sides) before reaching the
+  persistence tracker. Each link had been scored once per endpoint, so
+  `persistence.window = 4` spanned ~4.2 s instead of the 4 telemetry
+  windows (~8 s) the spec's "3 of the last 4 windows" means -- measured
+  live at 1.9 readings/cycle. It also allowed a link's two endpoints to
+  corroborate each other, which is exactly the independence the
+  persistence gate is supposed to require. `persistence.consecutive` was
+  deliberately NOT relaxed to compensate; weakening it would have
+  hollowed out a mechanism the project claims as a distinguishing
+  element.

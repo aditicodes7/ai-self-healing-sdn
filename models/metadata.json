@@ -63,9 +63,9 @@
     8
   ],
   "random_state": 42,
-  "threshold": 0.75,
+  "threshold": 0.4,
   "label_horizon_s": 10,
-  "git_commit": "5013550ae3bcc63732d825ebce0cbbbfb42b8ec5",
-  "trained_at": 1788419203.609081,
+  "git_commit": "e729a8ae851f2ec3824750abd3626f659bf7d399",
+  "trained_at": 1788783790.8433769,
   "data_source": "emulated_mininet"
 }

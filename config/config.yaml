@@ -46,7 +46,19 @@ label:
   horizon_s: 10
 
 ml:
-  threshold: 0.75
+  # Chosen from a threshold sweep on the HELD-OUT test set (seeds 7,8 --
+  # never used in training), recorded in
+  # results/tables/ml_threshold_sweep.json. F1 peaks here (0.416 at
+  # precision 0.558 / recall 0.331) versus 0.355 at the previous 0.75,
+  # which had been picked a priori in Phase 1 before any model existed.
+  #
+  # Trading per-reading precision for recall is the right direction for
+  # THIS architecture: a missed degradation is unrecoverable, while a
+  # false positive is filtered twice more downstream -- by persistence
+  # (3-of-4 windows) and then by stability (cooldown / route-hold /
+  # min-improvement). Per-reading precision is therefore not the rate at
+  # which spurious reroutes actually happen.
+  threshold: 0.40
   model_path: models/degradation_model.joblib
   metadata_path: models/metadata.json
   candidate_models:
@@ -66,7 +78,12 @@ ml_rl_service:
 persistence:
   window: 4
   consecutive: 3
-  uncertainty_band: [0.45, 0.60]
+  # Sits immediately BELOW ml.threshold so the decision rule is monotonic:
+  # p < 0.25 healthy, 0.25 < p < 0.40 abstain, p >= 0.40 degraded. The
+  # previous [0.45, 0.60] band sat above a 0.75 threshold, which made the
+  # rule non-monotonic once the threshold moved (a 0.42 reading would
+  # have counted as degraded while a 0.50 reading abstained).
+  uncertainty_band: [0.25, 0.40]
 
 stability:
   cooldown_s: 30

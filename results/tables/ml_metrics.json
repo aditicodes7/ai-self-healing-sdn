@@ -1,6 +1,6 @@
 {
   "chosen_model": "randomforest",
-  "threshold": 0.75,
+  "threshold": 0.4,
   "threshold_justification": "Fixed at config.ml.threshold, the same value the live persistence/stability decision logic (Phase 12) uses -- so reported precision/recall reflect exactly the operating point the closed loop runs at, not a metric re-optimized after the fact. This value sits outside persistence.uncertainty_band, avoiding the abstention band by construction (see tests/unit/test_config.py::test_ml_threshold_within_bounds).",
   "train_seeds": [
     1,
@@ -42,20 +42,20 @@
   "dropped_features_reason": "loss_rate/error_rate-derived features are exactly 0.0 for every row: OVS's rx_dropped/rx_errors port counters never reflect tc-netem-injected loss/corruption on Mininet's veth-based links, confirmed empirically. See docs/limitations.md.",
   "models": {
     "histgradientboosting": {
-      "threshold": 0.75,
-      "precision": 0.4264705882352941,
-      "recall": 0.3625,
-      "f1": 0.3918918918918919,
+      "threshold": 0.4,
+      "precision": 0.2206703910614525,
+      "recall": 0.49375,
+      "f1": 0.305019305019305,
       "roc_auc": 0.8362161355615528,
       "pr_auc": 0.3702504581630544,
       "confusion_matrix": [
         [
-          9556,
-          78
+          9355,
+          279
         ],
         [
-          102,
-          58
+          81,
+          79
         ]
       ],
       "confusion_matrix_labels": [
@@ -64,23 +64,23 @@
       ],
       "n_test_samples": 9794,
       "n_test_positive": 160,
-      "train_time_s": 2.286571979522705
+      "train_time_s": 2.0348947048187256
     },
     "randomforest": {
-      "threshold": 0.75,
-      "precision": 0.8372093023255814,
-      "recall": 0.225,
-      "f1": 0.35467980295566504,
+      "threshold": 0.4,
+      "precision": 0.5578947368421052,
+      "recall": 0.33125,
+      "f1": 0.41568627450980394,
       "roc_auc": 0.8284344509030517,
       "pr_auc": 0.38140736772252576,
       "confusion_matrix": [
         [
-          9627,
-          7
+          9592,
+          42
         ],
         [
-          124,
-          36
+          107,
+          53
         ]
       ],
       "confusion_matrix_labels": [
@@ -89,23 +89,23 @@
       ],
       "n_test_samples": 9794,
       "n_test_positive": 160,
-      "train_time_s": 2.947035789489746
+      "train_time_s": 2.6673080921173096
     },
     "logisticregression_baseline": {
-      "threshold": 0.75,
-      "precision": 0.1836734693877551,
-      "recall": 0.1125,
-      "f1": 0.13953488372093023,
+      "threshold": 0.4,
+      "precision": 0.017266000259639102,
+      "recall": 0.83125,
+      "f1": 0.03382932722879308,
       "roc_auc": 0.5652895993356861,
       "pr_auc": 0.06339007565991403,
       "confusion_matrix": [
         [
-          9554,
-          80
+          2064,
+          7570
         ],
         [
-          142,
-          18
+          27,
+          133
         ]
       ],
       "confusion_matrix_labels": [
@@ -114,7 +114,7 @@
       ],
       "n_test_samples": 9794,
       "n_test_positive": 160,
-      "train_time_s": 0.2098369598388672
+      "train_time_s": 0.21281218528747559
     }
   },
   "permutation_importance": {

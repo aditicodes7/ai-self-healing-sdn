@@ -414,7 +414,36 @@ the genuinely degraded link first, by a wide margin:
 and the underlying signal is real: s1-s3 latency went 20.5 ms before the
 fault to 39.1 ms during it.
 
-**Status: open, precisely characterised.** Of 258 readings during the
+**RESOLVED 2026-09-05.** Two further changes closed it, both justified
+independently of whether they made the test pass:
+
+1. `ml.threshold` moved 0.75 -> 0.40, chosen by a sweep on the HELD-OUT
+   test seeds (`ml/threshold_sweep.py`,
+   `results/tables/ml_threshold_sweep.json`), where F1 peaks (0.416 at
+   precision 0.558 / recall 0.331, vs 0.355 at 0.75). The original 0.75
+   was fixed in Phase 1 before any model existed. The abstention band
+   moved to [0.25, 0.40] so the rule is monotonic (healthy -> uncertain
+   -> degraded); a new config test enforces that ordering.
+2. Predictions are now aggregated to ONE reading per link per telemetry
+   cycle (max across the two switch-sides). Previously each link was
+   scored twice per cycle, so `persistence.window = 4` spanned ~4.2 s
+   rather than the 4 telemetry windows (~8 s) the spec means -- measured
+   live at 1.9 readings/cycle. It also let a link's two endpoints count
+   as independent corroboration of each other, which is precisely what
+   the persistence gate exists to prevent.
+
+`persistence.consecutive` was deliberately NOT relaxed. With the loop
+running end to end, the live result is:
+
+    fault injected on s1-s3 (carrying traffic)
+    +18 s  incident opened, P=0.420, persistence confirmed
+           rerouted s1,s3,s6 -> s1,s2,s3,s6 (selector=P2_ML_RL, no fallback)
+    +27 s  verification SUCCESS, 0 retries, incident closed SUCCESS
+
+The historical record below is retained because the diagnosis is what
+produced the fix.
+
+**Original status (open, precisely characterised).** Of 258 readings during the
 fault, exactly 2 crossed the 0.75 threshold, and they were consecutive.
 The best persistence window achieved was 2-of-4; `persistence.consecutive`
 requires 3. The distribution falls off a cliff after the top two

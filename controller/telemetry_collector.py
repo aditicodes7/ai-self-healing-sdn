@@ -423,8 +423,26 @@ class TelemetryCollector(app_manager.RyuApp):
             return  # safety gate: no predictions this round
 
         pairs, model_version = result
-        now = time.time()
+
+        # Both endpoints of a link are scored (each switch reports its own
+        # side's counters), but a LINK has one health state, so collapse
+        # them into a single reading per cycle -- taking the max, since
+        # either endpoint observing degradation is evidence of it.
+        #
+        # Without this the persistence tracker receives ~2 readings per
+        # telemetry cycle, so `persistence.window = 4` spans only ~4s
+        # rather than the 4 telemetry windows (~8s) the spec's "3 of the
+        # last 4 windows" means. Measured live: 160 readings over 168s =
+        # 1.9 per cycle. This also stops one link's two sides from
+        # counting as independent corroboration of each other, which is
+        # exactly what the persistence gate exists to require.
+        per_link: dict[str, float] = {}
         for link_id, probability in pairs:
+            if probability > per_link.get(link_id, -1.0):
+                per_link[link_id] = probability
+
+        now = time.time()
+        for link_id, probability in per_link.items():
             self._db.insert(
                 "predictions",
                 {
