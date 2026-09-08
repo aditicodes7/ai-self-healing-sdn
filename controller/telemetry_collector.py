@@ -152,6 +152,14 @@ class TelemetryCollector(app_manager.RyuApp):
         self._echo_thread = hub.spawn(self._run_forever, self._send_all_echo_requests, self.echo_interval_s)
         self._probe_thread = hub.spawn(self._run_forever, self._send_all_probes, self.interval_s)
         self._healing_thread = hub.spawn(self._run_forever, self._ensure_initial_path, self.interval_s)
+        # Expire link health that nothing has refreshed recently, so the
+        # states describe the network now rather than accumulating every
+        # link that was ever rerouted around. Owned here (not inside the
+        # healing loop) so the loop keeps no background threads of its
+        # own and stays synchronously testable.
+        self._link_state_thread = hub.spawn(
+            self._run_forever, self._expire_stale_link_states, self.interval_s * 5
+        )
         # Inference runs on its own greenthread, off the OpenFlow event
         # path, for the reason documented on _update_features.
         self._inference_thread = hub.spawn(self._run_forever, self._run_inference_cycle, self.interval_s)
@@ -226,6 +234,12 @@ class TelemetryCollector(app_manager.RyuApp):
             b2_utilization_threshold=cfg.baselines.b2_utilization_threshold,
             b2_loss_threshold=cfg.baselines.b2_loss_threshold,
         )
+
+    def _expire_stale_link_states(self) -> None:
+        # Five verification windows: long enough that a link genuinely
+        # being worked on is never cleared mid-incident, short enough
+        # that the map reflects current conditions.
+        self._healing_loop.clear_stale_link_states(max_age_s=self.interval_s * 30)
 
     def _managed_flow_ctx(self) -> FlowContext:
         """The demand the loop protects: h1->h6, this project's flagship

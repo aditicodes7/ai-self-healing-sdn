@@ -476,6 +476,32 @@ class HealingLoop:
             (status.value, time.time(), reason, incident_id),
         )
 
+    def clear_stale_link_states(self, max_age_s: float) -> None:
+        """Return links to HEALTHY once nothing has been observed on them
+        for a while.
+
+        A remediated link was being left AT_RISK forever, so after a long
+        run the dashboard listed six links as "starting to look risky"
+        when they were simply ones that had been rerouted around at some
+        point. A health state with no expiry is a running total of
+        everything that ever went wrong, not a description of the network
+        now.
+
+        Deliberately NOT called on a fixed timer inside this class: the
+        controller owns the schedule, so the loop stays free of its own
+        background threads and remains testable synchronously.
+        """
+        cutoff = time.time() - max_age_s
+        try:
+            self.db.execute(
+                "UPDATE links SET state = ?, last_updated = ? "
+                "WHERE state != ? AND last_updated < ?",
+                (LinkHealthState.HEALTHY.value, time.time(),
+                 LinkHealthState.HEALTHY.value, cutoff),
+            )
+        except Exception:
+            logger.exception("could not expire stale link states")
+
     def _set_link_state(self, link_id: str, state: LinkHealthState) -> None:
         """Records a link's health so the map can colour by it.
 

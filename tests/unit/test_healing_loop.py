@@ -494,3 +494,43 @@ def test_measure_active_path_returns_none_when_nothing_measured(db, flow_ctx):
 def test_measure_active_path_with_no_path_returns_none(db, flow_ctx):
     loop = _make_loop(db, flow_ctx)
     assert loop._measure_active_path() == (None, None)
+
+
+def test_stale_link_states_expire_back_to_healthy(db, flow_ctx):
+    """A remediated link was left AT_RISK forever, so after a long run
+    the dashboard listed six links as 'starting to look risky' when they
+    were simply ones rerouted around at some point. A health state with
+    no expiry is a running total of everything that ever went wrong."""
+    import time as _t
+
+    loop = _make_loop(db, flow_ctx)
+    db.insert("links", {
+        "link_id": "s1-s3", "src_switch": "s1", "src_port": 4,
+        "dst_switch": "s3", "dst_port": 4, "state": "AT_RISK",
+        "last_updated": _t.time() - 600,
+    })
+    db.insert("links", {
+        "link_id": "s1-s2", "src_switch": "s1", "src_port": 2,
+        "dst_switch": "s2", "dst_port": 2, "state": "DEGRADED",
+        "last_updated": _t.time(),  # fresh: an incident may be live
+    })
+
+    loop.clear_stale_link_states(max_age_s=60)
+
+    states = {r["link_id"]: r["state"] for r in db.query("SELECT link_id, state FROM links")}
+    assert states["s1-s3"] == "HEALTHY", "a stale state should expire"
+    assert states["s1-s2"] == "DEGRADED", "a fresh state must not be cleared mid-incident"
+
+
+def test_expiry_leaves_healthy_links_alone(db, flow_ctx):
+    import time as _t
+
+    loop = _make_loop(db, flow_ctx)
+    db.insert("links", {
+        "link_id": "s3-s6", "src_switch": "s3", "src_port": 3,
+        "dst_switch": "s6", "dst_port": 2, "state": "HEALTHY",
+        "last_updated": _t.time() - 9999,
+    })
+    loop.clear_stale_link_states(max_age_s=60)
+    row = db.query_one("SELECT state FROM links WHERE link_id = 's3-s6'")
+    assert row["state"] == "HEALTHY"
