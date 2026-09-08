@@ -114,6 +114,17 @@ def _fmt(entry: dict, scale: float = 1.0, unit: str = "") -> str:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", default=str(REPO_ROOT / "results" / "experiments.db"))
+    parser.add_argument(
+        "--min-id", type=int, default=None,
+        help=(
+            "Only analyse runs with this row id or higher. The results "
+            "database accumulates across sessions, so exploratory trials "
+            "(a pilot, a one-off check, a run under a superseded model) "
+            "sit alongside a real batch. Mixing them silently changes the "
+            "reported rates, so a batch is selected explicitly rather "
+            "than by deleting rows -- the earlier trials stay on record."
+        ),
+    )
     args = parser.parse_args()
 
     db_path = Path(args.db)
@@ -122,7 +133,12 @@ def main() -> int:
         return 1
 
     with Database(db_path) as db:
-        rows = db.query("SELECT * FROM experiment_runs ORDER BY started_at")
+        if args.min_id is not None:
+            rows = db.query(
+                "SELECT * FROM experiment_runs WHERE id >= ? ORDER BY started_at", (args.min_id,)
+            )
+        else:
+            rows = db.query("SELECT * FROM experiment_runs ORDER BY started_at")
 
     grouped: dict[tuple[str, str], list[dict]] = {}
     for row in rows:

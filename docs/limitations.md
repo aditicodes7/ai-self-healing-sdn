@@ -333,6 +333,62 @@ sim-to-real gap on top of the queueing-delay one documented above, and
 should be stated in the technical paper's RL methodology section
 alongside it.
 
+## Phase 22 E1: the simple reactive baseline outperforms the full system
+
+First complete experiment, 4 systems x 5 seeds x gradual_degradation,
+all 20 trials executed live (results/tables/experiment_results.json,
+results/figures/e1_comparison.png):
+
+| system | detected | recovery | time to recovery | reroutes | throughput kept |
+|---|---:|---:|---:|---:|---:|
+| B1 static shortest path | 0% | 0% | n/a | 0.0 | 13% |
+| **B2 reactive thresholds** | **100%** | **100%** | **54.0 s** | 2.8 | **137%** |
+| P1 ML + heuristic path | 80% | 80% | 70.5 s | 1.0 | 24% |
+| P2 ML + RL (full system) | 40% | 40% | 74.1 s | 0.4 | 48% |
+
+**B2 beats the full system on every headline metric on this fault type.**
+It detects more often (100% vs 40%), recovers sooner (54.0 s vs 74.1 s)
+and retains more throughput. This must be reported as the primary E1
+finding; it directly challenges the project's central claim, and
+presenting P2 as superior on the strength of any other cut of this data
+would be misrepresentation.
+
+Reading it honestly:
+
+* **Why B2 wins here.** `gradual_degradation` drops bandwidth to 15% and
+  adds 40 ms -- a large, sustained change that trips a fixed threshold
+  almost immediately. Prediction buys lead time only when a fault is
+  subtle enough that thresholds do NOT trip early; against an obvious
+  fault, the 3-of-4 persistence requirement is pure added latency. The
+  project's hypothesis is therefore untested by E1, not merely
+  unsupported: E1 uses the fault least able to discriminate the two
+  approaches. E2 (all six fault types) and E3 (lead time vs B2) are the
+  experiments that can actually support or refute it.
+* **P1 80% vs P2 40% is not evidence about the RL policy.** P1 and P2
+  share the entire detection path and differ only in path SELECTION, so
+  their detection rates should not differ. With n=5 (4/5 vs 2/5) this is
+  within noise (Fisher exact p ~ 0.52). It is reported, not explained
+  away, but no conclusion about RL should be drawn from it. E6 is the
+  ablation designed to isolate that.
+* **The >100% throughput figure is real, and it makes the metric
+  confounded.** `s1-s3` is provisioned at 5 Mbit while every alternative
+  path uses 10 Mbit links, so the shortest-HOP path is the lowest-
+  CAPACITY one. Any system that reroutes off it gains throughput
+  regardless of whether it correctly identified a fault. "Throughput
+  retained" therefore rewards rerouting per se on this topology and
+  should not be read as remediation quality; B2's 137% partly measures
+  its willingness to reroute 2.8 times. This is a topology design
+  problem, and either the topology or the metric needs revisiting before
+  throughput is used as a headline comparison.
+* **The one dimension where P2 leads is stability**: 0.4 reroutes per
+  trial vs B2's 2.8. That is the behaviour persistence and hysteresis
+  exist to produce. But it is not a clean win either, since fewer
+  detections mechanically mean fewer reroutes; E4 is where stability can
+  be measured against systems that detected comparably.
+
+Status: E1 complete and reported as-is. No claim of superiority for the
+learned systems is supported by it.
+
 ## Phase 22: offline model metrics disagreed with live behaviour
 
 Two models were trained on the same topology, traffic, fault schedule,
