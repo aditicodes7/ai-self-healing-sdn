@@ -1,0 +1,109 @@
+project:
+  name: ai-self-healing-sdn
+  controller_backend: ryu
+controller:
+  openflow_version: '1.3'
+  observe_links: true
+  of_listen_host: 0.0.0.0
+  of_listen_port: 6653
+network:
+  topology_name: scenario_a
+telemetry:
+  interval_s: 2
+  probe_timeout_s: 1.0
+  echo_interval_s: 2
+features:
+  windows:
+  - 3
+  - 5
+  - 10
+  ewma_alpha: 0.2
+  baseline_healthy_windows: 20
+  min_history_for_window: true
+label:
+  horizon_s: 10
+ml:
+  threshold: 0.4
+  model_path: models/degradation_model.joblib
+  metadata_path: models/metadata.json
+  candidate_models:
+  - histgradientboosting
+  - randomforest
+  - logisticregression_baseline
+  inference_timeout_ms: 300
+ml_rl_service:
+  host: 127.0.0.1
+  port: 8100
+persistence:
+  window: 4
+  consecutive: 3
+  uncertainty_band:
+  - 0.25
+  - 0.4
+stability:
+  cooldown_s: 30
+  route_hold_s: 60
+  min_improvement: 0.15
+path:
+  k_shortest: 4
+  weights:
+    utilization: 1.0
+    latency: 1.0
+    loss: 2.0
+    hop_count: 0.25
+experiment:
+  system: P2_ML_RL
+baselines:
+  b2_utilization_threshold: 0.8
+  b2_loss_threshold: 0.1
+rl:
+  algorithm: MaskablePPO
+  timeout_ms: 200
+  train_steps: 300000
+  eval_episodes: 50
+  policy_path: models/routing_policy.zip
+  reward_weights:
+    w1_throughput: 1.0
+    w2_latency: 1.0
+    w3_loss: 1.0
+    w4_recovery_success: 2.0
+    w5_max_utilization_after: 1.0
+    w6_reroute_cost: 0.5
+    w7_oscillation_penalty: 1.5
+    w8_failed_remediation: 2.0
+flow:
+  priority_remediated: 200
+  priority_default: 100
+  hard_timeout_s: 300
+  idle_timeout_s: 0
+verify:
+  settle_s: 8
+  windows: 3
+  tolerance:
+    latency_pct: 0.2
+    loss_pct: 0.2
+remediation:
+  max_retries: 2
+traffic:
+  iperf3_port: 5201
+  iperf3_protocol: tcp
+database:
+  path: results/demo/trial_p2_seed2.db
+  wal: true
+  retention_days: 30
+api:
+  host: 0.0.0.0
+  port: 8000
+seeds:
+  global: 42
+  dataset_runs:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  rl_train: 42
+  eval: 100
