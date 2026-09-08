@@ -31,8 +31,10 @@ import networkx as nx
 
 from common.config_loader import load_config
 from common.logging_setup import configure_logging
+from common.schema import LinkHealthState
 from controller.of_compat import app_manager, get_link, get_switch, set_ev_cls, topo_event
 from database.db import Database
+from network.topo_builder import load_topology_spec
 
 logger = configure_logging("controller.topology_manager")
 
@@ -50,6 +52,18 @@ class TopologyManager(app_manager.RyuApp):
 
         cfg = load_config()
         self._db = Database(REPO_ROOT / cfg.database.path, wal=cfg.database.wal)
+        # Configured capacities come from the same topology YAML the
+        # network was built from; OpenFlow does not report a link's
+        # provisioned bandwidth and LLDP does not carry it.
+        try:
+            topo_spec = load_topology_spec(cfg.network.topology_name)
+            self._link_capacities_bps = {
+                "-".join(sorted(link["endpoints"])): link["bw"] * 1_000_000
+                for link in topo_spec["links"] if "bw" in link
+            }
+        except Exception:
+            logger.exception("could not load topology spec for link capacities")
+            self._link_capacities_bps = {}
 
     @set_ev_cls(topo_event.EventSwitchEnter)
     def _switch_enter(self, ev):
@@ -108,6 +122,47 @@ class TopologyManager(app_manager.RyuApp):
                 "source": "discovered",
             },
         )
+        self._upsert_links()
+
+    def _upsert_links(self) -> None:
+        """Keep the `links` registry in step with what LLDP has actually
+        discovered.
+
+        This table was defined in Phase 1 but never written by anything,
+        so it stayed empty for the whole project: the dashboard's map had
+        no link health to colour by, and its status banner -- which keys
+        off this table -- reported "waiting for the network" even while
+        showing a completed incident from the same database. Structural
+        fields come from the discovered graph; `state` is owned by the
+        healing loop, so an existing row's state is preserved here rather
+        than being reset to HEALTHY on every topology refresh.
+        """
+        now = time.time()
+        for u, v in self.graph.edges():
+            ports = self.graph[u][v].get("ports", {})
+            link_id = "-".join(sorted((f"s{u}", f"s{v}")))
+            row = self._db.query_one("SELECT link_id FROM links WHERE link_id = ?", (link_id,))
+            if row is None:
+                self._db.insert(
+                    "links",
+                    {
+                        "link_id": link_id,
+                        "src_switch": f"s{u}",
+                        "src_port": ports.get(u, 0),
+                        "dst_switch": f"s{v}",
+                        "dst_port": ports.get(v, 0),
+                        "capacity_bps": self._link_capacities_bps.get(link_id),
+                        "state": LinkHealthState.HEALTHY.value,
+                        "last_updated": now,
+                    },
+                )
+            else:
+                self._db.execute(
+                    "UPDATE links SET src_switch=?, src_port=?, dst_switch=?, dst_port=?, "
+                    "capacity_bps=?, last_updated=? WHERE link_id=?",
+                    (f"s{u}", ports.get(u, 0), f"s{v}", ports.get(v, 0),
+                     self._link_capacities_bps.get(link_id), now, link_id),
+                )
 
     def get_all_ports(self, dpid: int) -> set[int]:
         """Every port Ryu knows about on `dpid` (host-facing and

@@ -38,7 +38,7 @@ import time
 import uuid
 
 from common.logging_setup import configure_logging
-from common.schema import IncidentStatus, VerificationClassification
+from common.schema import IncidentStatus, LinkHealthState, VerificationClassification
 from controller.baselines.rule_based import evaluate_current_conditions
 from controller.path_computer import (
     LinkMetrics,
@@ -296,6 +296,7 @@ class HealingLoop:
                 incident_id, "degradation_predicted",
                 {"link": link_id, "probability": round(probability, 4)},
             )
+            self._set_link_state(link_id, LinkHealthState.DEGRADED)
 
             baseline_latency, baseline_loss = self._measure_active_path()
             baseline = Baseline(
@@ -366,6 +367,15 @@ class HealingLoop:
                 )
 
             self._close_incident(incident_id, status, outcome.reason)
+            # The fault itself may still be present, but traffic is no
+            # longer on this link once remediation succeeded; mark it
+            # AT_RISK rather than either DEGRADED (stale alarm) or
+            # HEALTHY (claiming a repair the system did not perform).
+            self._set_link_state(
+                link_id,
+                LinkHealthState.AT_RISK if status is IncidentStatus.SUCCESS
+                else LinkHealthState.DEGRADED,
+            )
             self._emit_event(
                 incident_id,
                 "verification_" + outcome.classification.value.lower(),
@@ -465,6 +475,22 @@ class HealingLoop:
             "UPDATE incidents SET status = ?, closed_at = ?, reason = ? WHERE incident_id = ?",
             (status.value, time.time(), reason, incident_id),
         )
+
+    def _set_link_state(self, link_id: str, state: LinkHealthState) -> None:
+        """Records a link's health so the map can colour by it.
+
+        topology_manager.py owns the structural columns and deliberately
+        does not touch `state`; this is the only writer of it, so the two
+        cannot fight over the same row."""
+        if not link_id:
+            return
+        try:
+            self.db.execute(
+                "UPDATE links SET state = ?, last_updated = ? WHERE link_id = ?",
+                (state.value, time.time(), link_id),
+            )
+        except Exception:
+            logger.exception("could not update link state", extra={"link_id": link_id})
 
     def _emit_event(self, incident_id: str, event_type: str, detail: dict) -> None:
         """Every event the dashboard's SSE stream shows originates here."""

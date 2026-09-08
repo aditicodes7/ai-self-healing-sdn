@@ -136,7 +136,12 @@
 
     banner.className = "status-banner";
 
-    if (!links.length) {
+    // Keyed off whether ANY evidence exists, not just the links
+    // registry. Reading a completed run whose controller predates the
+    // links table being populated, the banner used to announce "waiting
+    // for the network" directly above a finished incident from that same
+    // database.
+    if (!links.length && !incidents.length) {
       banner.classList.add("banner-idle");
       icon.textContent = "•";
       headline.textContent = "Waiting for the network";
@@ -171,10 +176,16 @@
 
     banner.classList.add("banner-ok");
     icon.textContent = "✓";
-    headline.textContent = "Network is healthy";
-    sub.textContent = `All ${links.length} links are fine. Traffic is flowing normally${
-      activePath.length ? ` along ${activePath.join(" → ")}` : ""
-    }.`;
+    headline.textContent = incidents.length
+      ? "Network is healthy — earlier problems were fixed"
+      : "Network is healthy";
+    // Don't claim a link count when the registry is empty (e.g. reading
+    // a run recorded before the controller populated it) -- "All 0 links
+    // are fine" is worse than saying nothing about counts.
+    const flowing = activePath.length ? `Traffic is flowing along ${activePath.join(" → ")}.` : "";
+    sub.textContent = links.length
+      ? `All ${links.length} links are fine. ${flowing}`.trim()
+      : flowing || "No link health has been recorded for this run.";
   }
 
   // ---- the network map ---------------------------------------------------
@@ -458,6 +469,11 @@
     } catch (err) {
       return;
     }
+
+    // The controller opens an "init-" incident to install the managed
+    // flow's first path. That is startup, not a fault, and it rendered
+    // here as a blank-named row under "Problems detected".
+    incidents = incidents.filter((i) => !String(i.incident_id).startsWith("init-"));
 
     const list = $("incident-list");
     $("incident-empty").hidden = incidents.length > 0;
