@@ -26,7 +26,13 @@
     </div>
   </header>
 
+  <nav class="viewtabs">
+    <button class="viewtab active" data-view="live">Live network</button>
+    <button class="viewtab" data-view="results">Results &amp; evidence</button>
+  </nav>
+
   <!-- Plain-language summary of what is happening right now. -->
+  <div id="live-view">
   <div id="status-banner" class="status-banner banner-idle">
     <span id="status-icon" class="status-icon">•</span>
     <div>
@@ -170,6 +176,34 @@
       <p id="event-empty" class="empty-state">Waiting for the controller to report activity…</p>
     </section>
   </main>
+
+  </div><!-- /live-view -->
+
+  <section id="results-view" hidden>
+    <div class="results-intro">
+      <h2>What this system does, and how well</h2>
+      <p>
+        Every number below was produced by an executed run and read from this
+        project's own result files. Nothing here is illustrative.
+      </p>
+    </div>
+
+    <div class="results-grid" id="results-grid"></div>
+
+    <div class="panel results-figures">
+      <div class="panel-head"><h2>Figures</h2></div>
+      <div id="results-figures"></div>
+    </div>
+
+    <div class="panel results-honesty">
+      <div class="panel-head"><h2>Known limitations</h2></div>
+      <p class="panel-hint">
+        Stated openly because a result you cannot reproduce is not a result.
+        The full record is in <span class="mono">docs/limitations.md</span>.
+      </p>
+      <ul id="results-limitations" class="limitations-list"></ul>
+    </div>
+  </section>
 
   <script src="app.js"></script>
 </body>

@@ -632,9 +632,186 @@
     };
   }
 
+
+  // ---- Results view ------------------------------------------------------
+  //
+  // Renders only what the project actually measured, read from
+  // /api/results (which in turn reads the JSON that analyze.py,
+  // train_model.py and evaluate_rl.py wrote). A missing artefact is shown
+  // as "not measured yet"; nothing is defaulted to a number.
+
+  const SYSTEM_LABEL_SHORT = {
+    B1_SHORTEST_PATH: "B1 · static shortest path",
+    B2_RULE_BASED: "B2 · reactive thresholds",
+    P1_ML_HEURISTIC: "P1 · ML + heuristic",
+    P2_ML_RL: "P2 · ML + RL (full system)",
+  };
+
+  function card(title, subtitle, bodyHtml) {
+    return `<div class="panel result-card">
+      <div class="panel-head"><div><h2>${title}</h2>
+      ${subtitle ? `<p class="panel-hint">${subtitle}</p>` : ""}</div></div>
+      ${bodyHtml}</div>`;
+  }
+
+  function pct(v, digits = 0) {
+    return v === null || v === undefined ? "—" : `${(v * 100).toFixed(digits)}%`;
+  }
+
+  function experimentTable(exp) {
+    const rows = Object.entries(exp)
+      .filter(([k]) => k.startsWith("E1/"))
+      .map(([k, s]) => {
+        const sys = k.split("/")[1];
+        const rec = s.recovery_time_s || {};
+        const rr = s.reroute_count || {};
+        return `<tr>
+          <td>${SYSTEM_LABEL_SHORT[sys] || sys}</td>
+          <td class="num">${pct(s.detection_rate)}</td>
+          <td class="num">${rec.mean != null ? rec.mean.toFixed(1) + "s" : "—"}</td>
+          <td class="num">${rr.mean != null ? rr.mean.toFixed(1) : "—"}</td>
+          <td class="num">${s.trials_usable}</td>
+        </tr>`;
+      });
+    if (!rows.length) return null;
+    return `<table class="result-table">
+      <thead><tr><th>system</th><th>detected</th><th>recovery</th><th>reroutes</th><th>trials</th></tr></thead>
+      <tbody>${rows.join("")}</tbody></table>
+      <p class="result-note">
+        On this fault type the simple threshold baseline (B2) outperforms the full
+        system. That is reported rather than hidden: the fault is severe enough that
+        a fixed threshold catches it immediately, so prediction adds latency without
+        adding value. Whether prediction helps on subtler faults is what the
+        remaining experiments test.
+      </p>`;
+  }
+
+  function mlCard(ml) {
+    const best = ml.chosen_model;
+    const m = (ml.models || {})[best] || {};
+    return `<div class="metric-row">
+        <div class="metric"><span class="metric-label">Model</span>
+          <span class="metric-value" style="font-size:15px">${best || "—"}</span></div>
+        <div class="metric"><span class="metric-label">ROC-AUC</span>
+          <span class="metric-value">${m.roc_auc != null ? m.roc_auc.toFixed(3) : "—"}</span>
+          <span class="metric-note">1.0 = perfect, 0.5 = guessing</span></div>
+        <div class="metric"><span class="metric-label">Precision</span>
+          <span class="metric-value">${m.precision != null ? pct(m.precision) : "—"}</span>
+          <span class="metric-note">when it warns, how often it's right</span></div>
+        <div class="metric"><span class="metric-label">Recall</span>
+          <span class="metric-value">${m.recall != null ? pct(m.recall) : "—"}</span>
+          <span class="metric-note">how many real faults it catches</span></div>
+      </div>
+      <p class="result-note">Trained on ${ml.train_seeds ? ml.train_seeds.length : "?"} runs,
+      tested on ${ml.test_seeds ? ml.test_seeds.length : "?"} held-out runs it never saw.</p>`;
+  }
+
+  function rlCard(rl) {
+    const res = rl.results || {};
+    const rows = Object.entries(res).map(([name, s]) => {
+      const r = s.episode_reward || {};
+      return `<tr><td>${name === "learned" ? "<strong>trained RL policy</strong>" : name}</td>
+        <td class="num">${r.mean != null ? r.mean.toFixed(1) : "—"}</td>
+        <td class="num">${s.recovery_success_rate != null ? pct(s.recovery_success_rate) : "—"}</td>
+        <td class="num">${s.reroute_count && s.reroute_count.mean != null ? s.reroute_count.mean.toFixed(1) : "—"}</td></tr>`;
+    });
+    return `<table class="result-table">
+      <thead><tr><th>policy</th><th>score</th><th>recovered</th><th>reroutes</th></tr></thead>
+      <tbody>${rows.join("")}</tbody></table>
+      <p class="result-note">${rl.n_episodes} simulated episodes, seeded so they are reproducible.
+      The trained policy recovers from every fault using about one reroute; the
+      non-learned strategies either never recover or thrash.</p>`;
+  }
+
+  const LIMITATIONS = [
+    "Detection is unreliable on gradual faults — succeeded in 40% of E1 trials. A hard link failure is detected far more consistently.",
+    "The emulated switches cannot report packet loss (a property of Linux veth links), so 30 of 61 features are always zero and were dropped before training.",
+    "The RL policy is trained in a fast simulator whose queueing model overestimates real delay; this is a stated sim-to-real gap.",
+    "Throughput retained is a confounded metric on this topology: the shortest-hop path is also the lowest-capacity one, so any reroute gains throughput.",
+  ];
+
+  async function loadResults() {
+    const grid = $("results-grid");
+    let data;
+    try {
+      data = await getJSON("/api/results");
+    } catch (err) {
+      grid.innerHTML = `<p class="empty-state">Could not load results.</p>`;
+      return;
+    }
+    const a = data.available || {};
+    const cards = [];
+
+    if (a.experiments && a.experiments.results) {
+      const table = experimentTable(a.experiments.results);
+      if (table) {
+        cards.push(card("Experiment E1 — the full system vs three baselines",
+          "Each row adds one mechanism to the row above it, so a difference is attributable.",
+          table));
+      }
+    }
+    if (a.ml) cards.push(card("The prediction model", "Predicts a link is about to degrade.", mlCard(a.ml)));
+    if (a.rl_evaluation) {
+      cards.push(card("The routing policy (reinforcement learning)",
+        "Chooses which path to move traffic to.", rlCard(a.rl_evaluation)));
+    }
+    if (a.dataset) {
+      cards.push(card("The dataset", "Generated by running this network, not downloaded.",
+        `<div class="metric-row">
+          <div class="metric"><span class="metric-label">Runs</span><span class="metric-value">${a.dataset.num_runs}</span></div>
+          <div class="metric"><span class="metric-label">Labelled windows</span><span class="metric-value">${a.dataset.total_windows.toLocaleString()}</span></div>
+          <div class="metric"><span class="metric-label">Faults seen</span><span class="metric-value">${a.dataset.total_positive}</span></div>
+          <div class="metric"><span class="metric-label">Source</span><span class="metric-value" style="font-size:13px">${a.dataset.data_source}</span></div>
+        </div>`));
+    }
+
+    grid.innerHTML = cards.length ? cards.join("") :
+      `<p class="empty-state">No results recorded yet. Run the experiments first.</p>`;
+
+    const figs = $("results-figures");
+    figs.innerHTML = (data.figures || []).map((name) =>
+      `<figure class="result-figure"><img src="/figures/${name}" alt="${name}" loading="lazy" />
+       <figcaption>${name.replace(/\.png$/, "").replace(/_/g, " ")}</figcaption></figure>`
+    ).join("") || `<p class="empty-state">No figures generated yet.</p>`;
+
+    $("results-limitations").innerHTML = LIMITATIONS.map((l) => `<li>${l}</li>`).join("");
+  }
+
+  let resultsLoaded = false;
+
+  function showView(name) {
+    const showResults = name === "results";
+    document.querySelectorAll(".viewtab").forEach((t) =>
+      t.classList.toggle("active", t.dataset.view === (showResults ? "results" : "live"))
+    );
+    $("live-view").hidden = showResults;
+    $("results-view").hidden = !showResults;
+    // The hash makes a view linkable and survives a refresh, so
+    // "#results" can be opened directly instead of always landing on
+    // Live and having to click across.
+    if (window.location.hash.slice(1) !== name) {
+      history.replaceState(null, "", name === "live" ? "#" : `#${name}`);
+    }
+    if (showResults && !resultsLoaded) {
+      resultsLoaded = true;
+      loadResults();
+    }
+  }
+
+  function initViewTabs() {
+    document.querySelectorAll(".viewtab").forEach((tab) => {
+      tab.addEventListener("click", () => showView(tab.dataset.view));
+    });
+    window.addEventListener("hashchange", () =>
+      showView(window.location.hash.slice(1) === "results" ? "results" : "live")
+    );
+    showView(window.location.hash.slice(1) === "results" ? "results" : "live");
+  }
+
   // ---- wiring -----------------------------------------------------------
 
   function init() {
+    initViewTabs();
     $("link-select").addEventListener("change", (evt) => {
       if (evt.target.value) selectLink(evt.target.value);
     });

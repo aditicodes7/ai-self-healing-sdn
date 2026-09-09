@@ -194,6 +194,54 @@ async def events_stream() -> StreamingResponse:
     return StreamingResponse(_event_stream(), media_type="text/event-stream")
 
 
+@app.get("/api/results")
+def get_results() -> dict:
+    """Every measured result artefact, for the dashboard's Results view.
+
+    Reads the JSON files experiments/analyze.py, ml/train_model.py and
+    rl/evaluate_rl.py actually wrote. A missing file is reported as
+    missing rather than defaulted, so the page can say "not measured
+    yet" instead of implying a zero.
+    """
+    tables = REPO_ROOT / "results" / "tables"
+    wanted = {
+        "experiments": "experiment_results.json",
+        "ml": "ml_metrics.json",
+        "ml_threshold_sweep": "ml_threshold_sweep.json",
+        "rl_training": "rl_training_summary.json",
+        "rl_evaluation": "rl_evaluation.json",
+        # The deployment-matched dataset is what the shipped model was
+        # trained on; dataset_summary.json describes the superseded
+        # Phase 8 one. Showing the wrong one next to the model's metrics
+        # would misdescribe where those numbers came from.
+        "dataset": "dataset_matched_summary.json",
+        "simulator_calibration": "simulator_calibration.json",
+    }
+    out: dict = {"available": {}, "missing": []}
+    for key, filename in wanted.items():
+        path = tables / filename
+        if not path.exists():
+            out["missing"].append(filename)
+            continue
+        try:
+            out["available"][key] = json.loads(path.read_text())
+        except ValueError:
+            out["missing"].append(filename)
+
+    figures_dir = REPO_ROOT / "results" / "figures"
+    out["figures"] = sorted(p.name for p in figures_dir.glob("*.png")) if figures_dir.is_dir() else []
+    return out
+
+
+# Result figures are served from results/figures, separately from the
+# dashboard's own static mount so the two cannot shadow each other.
+_figures_dir = REPO_ROOT / "results" / "figures"
+if _figures_dir.is_dir():
+    from fastapi.staticfiles import StaticFiles as _StaticFiles
+
+    app.mount("/figures", _StaticFiles(directory=str(_figures_dir)), name="figures")
+
+
 # Mounted last, deliberately -- Starlette matches routes in registration
 # order and a "/" mount matches almost any path as a prefix, so every
 # /api/* route above must be registered first or this would shadow them.
