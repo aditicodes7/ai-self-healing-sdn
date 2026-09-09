@@ -125,6 +125,15 @@ def main() -> int:
             "than by deleting rows -- the earlier trials stay on record."
         ),
     )
+    parser.add_argument(
+        "--exclude-ids", type=int, nargs="*", default=None,
+        help=(
+            "Drop specific run ids. --min-id can only cut a prefix, which "
+            "is wrong when a single aborted trial sits in the middle of "
+            "otherwise good batches -- excluding it by id keeps every "
+            "other experiment in the analysis, and the row stays on record."
+        ),
+    )
     args = parser.parse_args()
 
     db_path = Path(args.db)
@@ -139,6 +148,9 @@ def main() -> int:
             )
         else:
             rows = db.query("SELECT * FROM experiment_runs ORDER BY started_at")
+    if args.exclude_ids:
+        dropped = set(args.exclude_ids)
+        rows = [r for r in rows if r["id"] not in dropped]
 
     grouped: dict[tuple[str, str], list[dict]] = {}
     for row in rows:

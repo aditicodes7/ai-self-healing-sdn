@@ -44,6 +44,20 @@ VENV_ML = Path(os.environ.get("VENV_ML", REPO_ROOT / "venv-ml"))
 VENV_CTRL = Path(os.environ.get("VENV_CTRL", Path.home() / "venv-ctrl-ai-self-healing-sdn"))
 
 SETTLE_BEFORE_FAULT_S = 90   # matches tests/e2e; startup transient inverts latency trends
+
+# Continuous background load, identical to ml/dataset/generate_dataset.py
+# and demo/run_live_demo.py.
+#
+# Without it the runner only produced three 10-second iperf3 bursts, so
+# links were idle most of the time -- a regime the model never trained
+# on. Measured consequence: link_failure scored 0/5 here while the live
+# demo (which does run this load) detected the SAME fault in 6s with 3 of
+# 3 readings over threshold. On an idle link, killing it changes nothing
+# observable, because utilization was already zero. Every E2 rate
+# measured before this was depressed by the harness, not only by the
+# detector.
+BACKGROUND_TRAFFIC_PAIRS = [("h1", "h6"), ("h2", "h5"), ("h3", "h4")]
+BACKGROUND_UDP_MBIT = 2
 FAULT_DURATION_S = 150
 POST_FAULT_OBSERVE_S = 30
 IPERF_SAMPLE_S = 10
@@ -62,6 +76,24 @@ def _write_trial_config(trial_dir: Path, system: str, db_path: Path) -> Path:
     out = trial_dir / "config.yaml"
     out.write_text(yaml.safe_dump(base, sort_keys=False))
     return out
+
+
+def _start_background_traffic(net, duration_s: float) -> list:
+    """Continuous load so a fault has something to act on. Returns the
+    processes so the trial can stop them -- a daemonised iperf3 outlives
+    its Mininet namespace and accumulates across trials."""
+    procs = []
+    for client_id, server_id in BACKGROUND_TRAFFIC_PAIRS:
+        try:
+            client, server = net.get(client_id), net.get(server_id)
+        except KeyError:
+            continue
+        procs.append(server.popen(["iperf3", "-s", "-p", "5301"]))
+        procs.append(client.popen([
+            "iperf3", "-c", server.IP(), "-p", "5301", "-u",
+            "-b", f"{BACKGROUND_UDP_MBIT}M", "-t", str(int(duration_s)),
+        ]))
+    return procs
 
 
 def _measure_flow(net, duration_s: int, port: int) -> dict:
@@ -154,6 +186,7 @@ def run_trial(experiment_id: str, system: str, fault_type: str, seed: int,
     log(f"=== {trial_id} ===")
     started_at = time.time()
     service = controller = net = None
+    bg_procs: list = []
     record: dict = {"trial_id": trial_id, "error": None}
 
     try:
@@ -180,7 +213,14 @@ def run_trial(experiment_id: str, system: str, fault_type: str, seed: int,
         spec = load_topology_spec(cfg.network.topology_name)
         net = build_network(spec, "127.0.0.1", cfg.controller.of_listen_port, fail_mode="secure")
         net.start()
-        log(f"  network up; settling {SETTLE_BEFORE_FAULT_S}s")
+        # ARP first, then load: iperf3 clients stall on unresolved hosts,
+        # and traffic started before discovery converges floods the
+        # control plane while the controller is still learning.
+        net.pingAll(timeout="1")
+        bg_procs = _start_background_traffic(
+            net, SETTLE_BEFORE_FAULT_S + FAULT_DURATION_S + POST_FAULT_OBSERVE_S + 120
+        )
+        log(f"  network up, background traffic running; settling {SETTLE_BEFORE_FAULT_S}s")
         time.sleep(SETTLE_BEFORE_FAULT_S)
 
         with Database(db_path) as db:
@@ -247,6 +287,11 @@ def run_trial(experiment_id: str, system: str, fault_type: str, seed: int,
         log(f"  TRIAL ERROR: {exc}")
         record["error"] = str(exc)
     finally:
+        for proc in bg_procs:
+            try:
+                proc.kill()
+            except Exception:
+                pass
         if net is not None:
             try:
                 net.stop()

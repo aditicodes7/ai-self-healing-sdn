@@ -333,6 +333,42 @@ sim-to-real gap on top of the queueing-delay one documented above, and
 should be stated in the technical paper's RL methodology section
 alongside it.
 
+## Phase 22 E2: the experiment harness under-loaded the network
+
+E2 ran all six fault types (60 trials, B1 control vs P2 full system) and
+produced detection rates of 2-3 out of 5 for five fault types and
+**0 out of 5 for link_failure**.
+
+That last number is what exposed the problem: the live demo detects the
+SAME fault, with the SAME model, in 6 seconds with 3 of 3 readings above
+threshold. Same code, opposite result.
+
+The difference is traffic. `demo/run_live_demo.py` and
+`ml/dataset/generate_dataset.py` both run continuous 2 Mbit UDP between
+three host pairs; `experiments/runner.py` ran only three 10-second
+iperf3 bursts, leaving links idle for most of each trial. On an idle
+link, cutting it changes nothing observable -- utilization was already
+zero -- so a total failure is invisible while a congestion fault (which
+still perturbs the little traffic there is) remains partly detectable.
+
+**Consequence: every E2 detection rate measured before this fix is
+depressed by the harness, not only by the detector, and none of them
+should be quoted.** The B1 control at 0/26 is unaffected and remains
+valid -- it confirms the fault injection is real and that detections are
+not a harness artefact.
+
+The runner now runs the same continuous load as training and the demo,
+with `pingAll` first so the iperf3 clients do not stall on unresolved
+hosts. E2 must be re-run before any per-fault claim is made.
+
+This is the third instance of the same root cause in this project: a
+measurement path whose conditions did not match the conditions the model
+was trained under (see the Phase 21 inference-overhead entry and the
+Phase 22 train/serve skew entry above). The recurring lesson is that the
+model is far more sensitive to operating regime than to its own
+hyperparameters, and any new harness has to reproduce the training
+regime before its numbers mean anything.
+
 ## Phase 22 E1: the simple reactive baseline outperforms the full system
 
 First complete experiment, 4 systems x 5 seeds x gradual_degradation,

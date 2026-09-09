@@ -62,6 +62,9 @@ BANNER = "=" * 66
 BACKGROUND_TRAFFIC_PAIRS = [("h1", "h6"), ("h2", "h5"), ("h3", "h4")]
 BACKGROUND_UDP_MBIT = 2
 
+# Traffic processes we started, so cleanup can actually stop them.
+_BACKGROUND_PROCS: list = []
+
 
 def log(msg: str = "") -> None:
     print(msg, flush=True)
@@ -144,11 +147,15 @@ def _start_background_traffic(net, duration_s: float) -> None:
             server = net.get(server_id)
         except KeyError:
             continue  # a topology without these hosts is fine, just quieter
-        server.popen(["iperf3", "-s", "-p", "5301", "-D"])
-        client.popen([
+        # NOT -D: a daemonised iperf3 detaches from the host namespace and
+        # survives net.stop(), so repeated demo runs leave a growing pile
+        # of orphans (9 of them, up to 2h43m old, were found on this VM).
+        # Held as a child instead, and killed in the cleanup below.
+        _BACKGROUND_PROCS.append(server.popen(["iperf3", "-s", "-p", "5301"]))
+        _BACKGROUND_PROCS.append(client.popen([
             "iperf3", "-c", server.IP(), "-p", "5301", "-u",
             "-b", f"{BACKGROUND_UDP_MBIT}M", "-t", str(int(duration_s)),
-        ])
+        ]))
 
 
 def main() -> int:
@@ -344,6 +351,12 @@ def main() -> int:
     except KeyboardInterrupt:
         log("\n  stopping...")
     finally:
+        for proc in _BACKGROUND_PROCS:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+        _BACKGROUND_PROCS.clear()
         if net is not None:
             try:
                 net.stop()
