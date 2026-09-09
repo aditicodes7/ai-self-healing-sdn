@@ -30,7 +30,12 @@ from typing import TYPE_CHECKING
 from common.logging_setup import configure_logging
 from common.schema import RouteSelector
 from controller.flow_manager import FlowInstallResult, FlowManager, FlowMatch, PathHop
-from controller.path_computer import LinkMetrics, generate_candidate_paths, rank_candidate_paths
+from controller.path_computer import (
+    LinkMetrics,
+    generate_candidate_paths,
+    link_id_for_edge,
+    rank_candidate_paths,
+)
 from database.db import Database
 
 if TYPE_CHECKING:
@@ -149,6 +154,10 @@ class RemediationManager:
         results = self.flow_manager.install_path(incident_id, hops, datapaths, match)
         return chosen_path, results
 
+    @staticmethod
+    def _path_link_ids(path: list[int]) -> list[str]:
+        return [link_id_for_edge(u, v) for u, v in zip(path, path[1:])]
+
     def _try_rl_selection(
         self, flow_ctx, graph, link_metrics, degradation_probs, degraded_link_id,
         current_path, excluded_paths, time_since_last_reroute_s,
@@ -158,7 +167,28 @@ class RemediationManager:
         chosen_path is None whenever the caller must fall back to the
         heuristic -- fallback_reason then explains why, for the
         route_changes row."""
-        raw_candidates = generate_candidate_paths(graph, flow_ctx.src_dpid, flow_ctx.dst_dpid, self.k_shortest)
+        all_candidates = generate_candidate_paths(
+            graph, flow_ctx.src_dpid, flow_ctx.dst_dpid, self.k_shortest
+        )
+        # Only offer the policy paths it is actually allowed to pick.
+        #
+        # Previously the full k-shortest list was sent, including the
+        # failing path and anything else crossing the degrading link, and
+        # the policy's answer was then rejected if it landed on one --
+        # observed live on a link_failure, where the policy chose an
+        # excluded path and the safety gate fell back to the heuristic
+        # (rl_selected_excluded_path). Asking for a choice and discarding
+        # it wastes the policy entirely; offering only viable options
+        # lets it decide among alternatives that can actually be
+        # installed. The gate below still stands as defence in depth.
+        raw_candidates = [
+            p for p in all_candidates
+            if p not in excluded_paths
+            and (not degraded_link_id or degraded_link_id not in self._path_link_ids(p))
+        ]
+        if not raw_candidates:
+            return None, None, "no_viable_candidate_for_rl"
+
         decision = self.rl_client.select_route(
             flow_ctx.src_dpid, flow_ctx.dst_dpid, raw_candidates, link_metrics,
             degradation_probs, degraded_link_id, current_path,

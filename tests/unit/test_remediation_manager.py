@@ -303,3 +303,71 @@ def test_no_alternate_path_is_recorded_not_silently_dropped(db, manager, flow_ct
     assert row["changed"] == 0
     assert row["new_path"] is None
     assert "no alternate path" in row["decision_reason"]
+
+
+class RecordingRLClient(FakeRLClient):
+    """Captures the candidate list the policy was actually offered."""
+
+    def select_route(self, src_dpid, dst_dpid, candidates, *args, **kwargs):
+        self.offered = list(candidates)
+        return super().select_route(src_dpid, dst_dpid, candidates, *args, **kwargs)
+
+
+def test_rl_is_only_offered_paths_it_may_actually_choose(db, manager_with_rl, flow_ctx):
+    """Observed live on a link_failure: the policy was handed the full
+    k-shortest list, chose a path crossing the dead link, and the safety
+    gate threw the answer away (rl_selected_excluded_path). Asking for a
+    decision and then discarding it wastes the policy."""
+    _open_incident(db, "inc-1", "s1-s3")
+    graph = _scenario_a_graph()
+    failing = [1, 3, 6]
+    rl_client = RecordingRLClient(FakeRLDecision(action=1, chosen_path=[1, 2, 3, 6]))
+    manager = manager_with_rl(rl_client)
+
+    manager.remediate("inc-1", "s1-s3", flow_ctx, graph, {}, _all_datapaths(), [failing])
+
+    assert rl_client.offered, "the policy should have been consulted"
+    for path in rl_client.offered:
+        assert path != failing, "the failing path was offered to the policy"
+        assert "s1-s3" not in manager._path_link_ids(path), (
+            f"{path} crosses the degrading link and should not have been offered"
+        )
+
+
+def test_rl_used_when_it_picks_from_the_offered_set(db, manager_with_rl, flow_ctx):
+    _open_incident(db, "inc-1", "s1-s3")
+    graph = _scenario_a_graph()
+    rl_client = RecordingRLClient(FakeRLDecision(action=1, chosen_path=None))
+    manager = manager_with_rl(rl_client)
+
+    # Answer with whatever the manager actually offered first.
+    def pick_first(src, dst, candidates, *a, **k):
+        rl_client.offered = list(candidates)
+        return FakeRLDecision(action=1, chosen_path=candidates[0])
+
+    rl_client.select_route = pick_first
+    chosen, _ = manager.remediate(
+        "inc-1", "s1-s3", flow_ctx, graph, {}, _all_datapaths(), [[1, 3, 6]]
+    )
+
+    row = db.query_one("SELECT * FROM route_changes WHERE incident_id = ? AND changed = 1", ("inc-1",))
+    assert row["selector"] == "P2_ML_RL"
+    assert row["rl_fallback"] == 0
+    assert "s1-s3" not in manager._path_link_ids(chosen)
+
+
+def test_no_viable_candidate_for_rl_is_reported_distinctly(db, manager_with_rl, flow_ctx):
+    """A chain topology where every route crosses the bad link: the
+    policy cannot be offered anything, and that is a different situation
+    from it choosing badly."""
+    chain = nx.Graph()
+    chain.add_edge(1, 3, ports={1: 4, 3: 4})
+    chain.add_edge(3, 6, ports={3: 3, 6: 2})
+    _open_incident(db, "inc-1", "s1-s3")
+    rl_client = RecordingRLClient(FakeRLDecision(action=1, chosen_path=[1, 3, 6]))
+    manager = manager_with_rl(rl_client)
+
+    manager.remediate("inc-1", "s1-s3", flow_ctx, chain, {}, _all_datapaths(), [[1, 3, 6]])
+
+    row = db.query_one("SELECT * FROM route_changes WHERE incident_id = ?", ("inc-1",))
+    assert row["rl_fallback_reason"] == "no_viable_candidate_for_rl"
