@@ -9,9 +9,21 @@
   "excluded": [
     {
       "experiment": "E2",
-      "id_range": [24, 84],
+      "id_range": [24, 122],
       "recorded": "2026-09-10",
-      "reason": "Two superseded E2 attempts. The first ran without continuous background traffic, so the network was under-loaded relative to the regime the model was trained in. The second was CPU-starved by wedged multipass clients on the host, and because the arms run sequentially the starvation covered the entire B1 baseline arm and none of P2 -- confounding host CPU with the system under test. See docs/limitations.md."
+      "reason": "Three superseded E2 attempts plus a pilot and a two-trial link-down check. (a) ids 25-84 ran without continuous background traffic, so the network was under-loaded relative to the regime the model was trained in. (b) ids 89-122 were CPU-starved by wedged multipass clients on the host; because the arms run sequentially the starvation covered the entire B1 arm and none of P2, confounding host CPU with the system under test. (c) ids 24 and 85-88 are single exploratory trials, not a batch. The valid E2 batch is ids 123-182. See docs/limitations.md."
+    },
+    {
+      "experiment": "E2",
+      "id_range": [135, 135],
+      "recorded": "2026-09-10",
+      "reason": "E2_B1_SHORTEST_PATH_packet_loss_seed3. Ran 21.5 min against a 5.1 min median: the post-fault iperf3 stalled for ~18 min with no timeout, so its 'after' sample was taken long after the fault had expired. It reads 3.02 Mbit/s against a 3.03 Mbit/s baseline -- a fully recovered network, which is not what that field is supposed to describe. Detection is unaffected (detected=False, no timings recorded), so dropping the trial does not change the detection rate for this cell; it removes a corrupted throughput value."
+    },
+    {
+      "experiment": "E2",
+      "id_range": [158, 158],
+      "recorded": "2026-09-10",
+      "reason": "E2_P2_ML_RL_gradual_degradation_seed1. Ran 81.8 min against a 5.1 min median: the host slept and the guest clock was later stepped forward ~76 min to catch up. The incident timings look intact (detection 57.1s, recovery 65.1s -- not inflated by the step, so the step fell outside the detection window) and during_fault throughput is already an honest None. Excluded anyway because the trial cannot be shown to be clean, and the cell's detection rate is 4/4 either way, so no bias is introduced by dropping it."
     }
   ]
 }

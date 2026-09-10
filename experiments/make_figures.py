@@ -195,6 +195,93 @@ def figure_ladder(results: dict, out_dir: Path) -> bool:
     return True
 
 
+FAULT_LABEL = {
+    "link_failure": "link failure\n(cable cut)",
+    "gradual_degradation": "gradual\ndegradation",
+    "congestion": "congestion",
+    "high_latency": "high latency",
+    "packet_loss": "packet loss",
+    "rising_errors": "rising errors",
+}
+
+
+def figure_e2(by_fault: dict, out_dir: Path) -> bool:
+    """E2: detection rate and recovery time, per fault type.
+
+    Drawn from the per-fault breakdown rather than E2's pooled row,
+    because the pooled row is the one thing this experiment must not
+    report: a single detection rate averages a fault caught 5/5 with one
+    caught 0/5 and describes neither. Faults are ordered by detection
+    rate so the ones the system cannot see sit at the bottom, stated
+    rather than buried mid-chart.
+    """
+    cells = {k.split("/")[2]: v for k, v in by_fault.items() if k.startswith("E2/P2_ML_RL/")}
+    if not cells:
+        return False
+
+    order = sorted(cells, key=lambda f: (cells[f]["detection_rate"] or 0.0, f))
+    ypos = list(range(len(order)))
+
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4.6), facecolor="white")
+
+    ax = axes[0]
+    for y, fault in zip(ypos, order):
+        s = cells[fault]
+        rate = (s["detection_rate"] or 0.0) * 100
+        n = s["trials_usable"]
+        # A zero here is a real measured zero -- the fault was injected
+        # five times and seen none of them -- so it gets a visible marker
+        # rather than an empty row, which would read as missing data.
+        if rate == 0:
+            ax.plot([0], [y], marker="|", markersize=14, color=ACCENT_2, markeredgewidth=2)
+            ax.text(2, y, f"  0%  (0 of {n} detected)", va="center", ha="left",
+                    fontsize=8.5, color=ACCENT_2)
+        else:
+            ax.barh(y, rate, height=0.55, color=ACCENT, edgecolor=ACCENT, linewidth=0.8)
+            ax.text(rate + 2, y, f"  {rate:.0f}%  ({round(rate / 100 * n)} of {n})",
+                    va="center", ha="left", fontsize=8.5, color=INK)
+    ax.set_yticks(ypos)
+    ax.set_yticklabels([FAULT_LABEL.get(f, f) for f in order], fontsize=8.5, color=INK)
+    ax.set_xlim(0, 100)
+    ax.set_xlabel("faults detected (%)", fontsize=9, color=INK_MUTED)
+    ax.set_title("What the system detects, by fault type", fontsize=10.5, color=INK, loc="left", pad=8)
+    _style(ax)
+
+    ax = axes[1]
+    for y, fault in zip(ypos, order):
+        s = cells[fault]
+        entry = s["recovery_time_s"]
+        if entry is None or entry.get("mean") is None:
+            ax.text(0, y, "  never detected, so never repaired", va="center", ha="left",
+                    fontsize=8, color=INK_MUTED, style="italic")
+            continue
+        n = entry["n"]
+        under = n < MIN_SAMPLES_FOR_CONFIDENCE
+        ax.barh(y, entry["mean"], height=0.55, color=ACCENT,
+                alpha=0.45 if under else 1.0, hatch="//" if under else None,
+                edgecolor=ACCENT, linewidth=0.8)
+        if entry.get("ci95"):
+            ax.errorbar(entry["mean"], y, xerr=entry["ci95"], fmt="none",
+                        ecolor=INK_MUTED, elinewidth=1.2, capsize=3)
+        note = f"{entry['mean']:.0f}s" + (f"  (n={n}, provisional)" if under else "")
+        ax.text(entry["mean"] + (entry.get("ci95") or 0), y, "  " + note,
+                va="center", ha="left", fontsize=8.5, color=INK)
+    ax.set_yticks(ypos)
+    ax.set_yticklabels([])
+    ax.set_xlabel("time from fault to verified repair (s)", fontsize=9, color=INK_MUTED)
+    ax.set_title("How long the repair takes", fontsize=10.5, color=INK, loc="left", pad=8)
+    _style(ax)
+    ax.margins(x=0.30)
+
+    fig.suptitle("E2  Coverage across six fault types  \u2014  P2 (ML + RL). "
+                 "Static routing detected 0 of 29.",
+                 fontsize=11, color=INK, x=0.012, ha="left", y=0.99)
+    fig.tight_layout(rect=(0, 0, 1, 0.93))
+    fig.savefig(out_dir / "e2_by_fault.png", dpi=200, facecolor="white")
+    plt.close(fig)
+    return True
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -207,7 +294,9 @@ def main() -> int:
         print(f"no results at {path} -- run experiments/analyze.py first")
         return 1
 
-    results = json.loads(path.read_text())["results"]
+    parsed = json.loads(path.read_text())
+    results = parsed["results"]
+    by_fault = parsed.get("by_fault", {})
     out_dir = REPO_ROOT / "results" / "figures"
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -216,6 +305,8 @@ def main() -> int:
         drawn.append("e1_comparison.png")
     if figure_ladder(results, out_dir):
         drawn.append("e1_ladder.png")
+    if figure_e2(by_fault, out_dir):
+        drawn.append("e2_by_fault.png")
 
     if not drawn:
         print("no experiment had enough recorded trials to draw yet")

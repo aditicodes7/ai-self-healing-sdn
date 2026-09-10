@@ -102,6 +102,23 @@ def summarize(records: list[dict]) -> dict:
     }
 
 
+def _fault_of(trial_id: str, experiment_id: str, system: str) -> str | None:
+    """Recover the fault type from a trial id.
+
+    Ids are built as `{experiment}_{system}_{fault}_seed{n}`, and the
+    fault is the only part not already recorded in its own column. Both
+    experiment and system are stripped by name rather than by splitting
+    on "_", since every one of them contains underscores itself
+    (B1_SHORTEST_PATH, gradual_degradation).
+    """
+    prefix = f"{experiment_id}_{system}_"
+    if not trial_id.startswith(prefix):
+        return None
+    rest = trial_id[len(prefix):]
+    fault, _, seed = rest.rpartition("_seed")
+    return fault or None
+
+
 def _fmt(entry: dict, scale: float = 1.0, unit: str = "") -> str:
     if entry is None or entry.get("mean") is None:
         return "n/a"
@@ -180,12 +197,17 @@ def main() -> int:
         rows = [r for r in rows if r["id"] not in dropped]
 
     grouped: dict[tuple[str, str], list[dict]] = {}
+    by_fault: dict[tuple[str, str, str], list[dict]] = {}
     for row in rows:
         try:
             rec = json.loads(row["results_json"])
         except (ValueError, TypeError):
             continue
-        grouped.setdefault((row["experiment_id"], row["system"]), []).append(rec)
+        exp_id, system = row["experiment_id"], row["system"]
+        grouped.setdefault((exp_id, system), []).append(rec)
+        fault = _fault_of(rec.get("trial_id") or "", exp_id, system)
+        if fault:
+            by_fault.setdefault((exp_id, system, fault), []).append(rec)
 
     output = {
         "generated_at": time.time(),
@@ -193,6 +215,15 @@ def main() -> int:
         "total_trials_recorded": len(rows),
         "results": {
             f"{exp}/{system}": summarize(recs) for (exp, system), recs in sorted(grouped.items())
+        },
+        # Aggregating a whole experiment into one row is the wrong shape
+        # for anything that spans several fault types. E2's entire claim
+        # is about WHICH faults are handled and which are not -- a single
+        # pooled detection rate averages a fault detected 5/5 together
+        # with one detected 0/5 and reports neither.
+        "by_fault": {
+            f"{exp}/{system}/{fault}": summarize(recs)
+            for (exp, system, fault), recs in sorted(by_fault.items())
         },
     }
 
@@ -211,6 +242,29 @@ def main() -> int:
         print(f"{key:<34}{det:>7}{rec:>7}"
               f"{_fmt(s['detection_latency_s']):>13}{_fmt(s['recovery_time_s']):>13}"
               f"{_fmt(s['reroute_count']):>12}{_fmt(s['throughput_retained_frac'], 100, '%'):>12}")
+
+    # Per-fault detail, printed only where an experiment actually spans
+    # more than one fault type -- for a single-fault experiment it would
+    # just restate the row above it.
+    multi = sorted({
+        key.split("/")[0] for key in output["by_fault"]
+        if len({k.split("/")[2] for k in output["by_fault"] if k.startswith(key.split("/")[0] + "/")}) > 1
+    })
+    for exp_id in multi:
+        print(f"\n{exp_id} by fault type")
+        sub_header = (f"{'system / fault':<44}{'det%':>7}{'n':>4}{'det_s':>13}"
+                      f"{'recov_s':>13}{'reroutes':>12}")
+        print(sub_header)
+        print("-" * len(sub_header))
+        for key, s in output["by_fault"].items():
+            if not key.startswith(exp_id + "/"):
+                continue
+            _, system, fault = key.split("/")
+            det = f"{s['detection_rate']*100:.0f}%" if s["detection_rate"] is not None else "n/a"
+            print(f"{system + ' / ' + fault:<44}{det:>7}{s['trials_usable']:>4}"
+                  f"{_fmt(s['detection_latency_s']):>13}{_fmt(s['recovery_time_s']):>13}"
+                  f"{_fmt(s['reroute_count']):>12}")
+    print()
 
     underpowered = [k for k, s in output["results"].items()
                     if s["trials_usable"] < MIN_SAMPLES_FOR_CONFIDENCE]
