@@ -157,6 +157,50 @@ class HealingLoop:
         logger.info("initial path installed", extra={"path": self.active_path})
         return self.active_path
 
+    # -- second entry point: a link that has actually gone --------------
+
+    def on_link_down(self, link_id: str) -> None:
+        """A link has DISAPPEARED from the discovered topology.
+
+        This exists because the ML predictor structurally cannot see a
+        hard failure. Measured: with a link cut, the model kept scoring
+        it 0.034 -- lower than before the cut -- because a dead link
+        carries no traffic and returns no latency samples, which is
+        indistinguishable from an idle healthy link in this feature set.
+        Its labels make it worse: the model is trained to predict
+        degradation ~10s BEFORE it happens, and a link that is already
+        gone is not about to do anything.
+
+        So hard failures are handled here, from LLDP's own link-removal
+        event, and gradual degradation is handled by the predictor. Two
+        fault classes, two mechanisms.
+
+        Persistence is deliberately BYPASSED. That gate exists to filter
+        uncertain predictions across several windows; a link's
+        disappearance is an observed fact, not a probability, and making
+        a certainty wait for corroboration would only add latency.
+
+        Available to every system that reroutes at all (B2/P1/P2), not
+        just the ML ones -- reacting to a link-down event is a
+        control-plane capability, not a learned one. Attributing it to
+        the ML arm would make P2 beat B2 on link_failure for a reason
+        that has nothing to do with prediction.
+        """
+        if self.system == "B1_SHORTEST_PATH":
+            return  # the do-nothing control never reroutes
+        if self.active_path is None or self._remediation_in_flight:
+            return
+        if link_id not in self._active_path_link_ids():
+            return  # a link we are not using going away is not our problem
+
+        logger.info("link removed from topology; remediating", extra={"link_id": link_id})
+        self._set_link_state(link_id, LinkHealthState.FAILED, override_failed=True)
+        self._remediation_in_flight = True
+        self.spawn_fn(
+            self._remediate_and_verify, link_id, 1.0,
+            "link removed from the discovered topology", None,
+        )
+
     # -- the entry point ---------------------------------------------------
 
     def on_prediction(self, link_id: str, probability: float, timestamp: float | None = None) -> None:
@@ -371,6 +415,8 @@ class HealingLoop:
             # longer on this link once remediation succeeded; mark it
             # AT_RISK rather than either DEGRADED (stale alarm) or
             # HEALTHY (claiming a repair the system did not perform).
+            # _set_link_state keeps FAILED sticky, so a link that
+            # disappeared is not downgraded here.
             self._set_link_state(
                 link_id,
                 LinkHealthState.AT_RISK if status is IncidentStatus.SUCCESS
@@ -494,6 +540,9 @@ class HealingLoop:
         cutoff = time.time() - max_age_s
         try:
             self.db.execute(
+                # Explicitly clears FAILED as well: if discovery has not
+                # refreshed a link for this long, the recorded state is
+                # stale regardless of how severe it was.
                 "UPDATE links SET state = ?, last_updated = ? "
                 "WHERE state != ? AND last_updated < ?",
                 (LinkHealthState.HEALTHY.value, time.time(),
@@ -502,19 +551,37 @@ class HealingLoop:
         except Exception:
             logger.exception("could not expire stale link states")
 
-    def _set_link_state(self, link_id: str, state: LinkHealthState) -> None:
+    def _set_link_state(
+        self, link_id: str, state: LinkHealthState, override_failed: bool = False
+    ) -> None:
         """Records a link's health so the map can colour by it.
 
         topology_manager.py owns the structural columns and deliberately
         does not touch `state`; this is the only writer of it, so the two
-        cannot fight over the same row."""
+        cannot fight over the same row.
+
+        FAILED is sticky. A link that has disappeared from the topology
+        is an observed fact, and the remediation path would otherwise
+        overwrite it -- first with DEGRADED when the incident opens, then
+        with AT_RISK once the reroute verifies -- leaving a dead link
+        displayed as merely at risk. Rerouting around a link is not a
+        repair. Only an explicit override (discovery seeing it again, or
+        the stale-state expiry) clears it.
+        """
         if not link_id:
             return
         try:
-            self.db.execute(
-                "UPDATE links SET state = ?, last_updated = ? WHERE link_id = ?",
-                (state.value, time.time(), link_id),
-            )
+            if override_failed:
+                self.db.execute(
+                    "UPDATE links SET state = ?, last_updated = ? WHERE link_id = ?",
+                    (state.value, time.time(), link_id),
+                )
+            else:
+                self.db.execute(
+                    "UPDATE links SET state = ?, last_updated = ? "
+                    "WHERE link_id = ? AND state != ?",
+                    (state.value, time.time(), link_id, LinkHealthState.FAILED.value),
+                )
         except Exception:
             logger.exception("could not update link state", extra={"link_id": link_id})
 

@@ -145,6 +145,9 @@ class TelemetryCollector(app_manager.RyuApp):
         # SQLite) because the loop asks for them on every decision.
         self._latest_link_metrics: dict[str, LinkMetrics] = {}
         self._healing_loop = self._build_healing_loop(cfg)
+        # Hard failures reach the loop through topology discovery, not
+        # through the predictor -- see HealingLoop.on_link_down.
+        self.topology_manager.register_link_removed_callback(self._healing_loop.on_link_down)
         self._initial_path_installed = False
         self._initial_path_attempts = 0
 

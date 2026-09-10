@@ -534,3 +534,96 @@ def test_expiry_leaves_healthy_links_alone(db, flow_ctx):
     loop.clear_stale_link_states(max_age_s=60)
     row = db.query_one("SELECT state FROM links WHERE link_id = 's3-s6'")
     assert row["state"] == "HEALTHY"
+
+
+# -- hard link failure, via topology discovery ---------------------------
+
+
+def test_link_down_on_active_path_triggers_remediation(db, flow_ctx):
+    """The ML predictor cannot see a hard failure: measured live, a cut
+    link kept scoring 0.034 -- LOWER than before the cut -- because a
+    dead link carries no traffic and returns no latency, which looks
+    exactly like an idle healthy one. LLDP's removal event is the signal
+    instead."""
+    remediation = FakeRemediation(_graph())
+    verifier = FakeVerifier()
+    loop = _make_loop(db, flow_ctx, remediation=remediation, verifier=verifier)
+    loop.install_initial_path()
+    original = list(loop.active_path)
+
+    loop.on_link_down(loop._active_path_link_ids()[0])
+
+    assert verifier.calls, "a link-down on the active path must remediate"
+    assert loop.active_path != original
+
+
+def test_link_down_bypasses_persistence(db, flow_ctx):
+    """Persistence filters uncertain PREDICTIONS. A disappearance is an
+    observed fact, so requiring 3-of-4 corroboration would only add
+    latency to something already certain."""
+    remediation = FakeRemediation(_graph())
+    loop = _make_loop(db, flow_ctx, remediation=remediation)
+    loop.install_initial_path()
+    before = len(remediation.calls)
+
+    # A single event, with no prior readings recorded at all.
+    loop.on_link_down(loop._active_path_link_ids()[0])
+
+    assert len(remediation.calls) > before
+
+
+def test_link_down_off_active_path_is_ignored(db, flow_ctx):
+    remediation = FakeRemediation(_graph())
+    loop = _make_loop(db, flow_ctx, remediation=remediation)
+    loop.install_initial_path()
+    before = len(remediation.calls)
+
+    on_path = set(loop._active_path_link_ids())
+    off_path = next(
+        lid for lid in ("s1-s2", "s2-s3", "s3-s6", "s1-s4", "s4-s5", "s5-s6", "s1-s3", "s2-s5")
+        if lid not in on_path
+    )
+    loop.on_link_down(off_path)
+
+    assert len(remediation.calls) == before
+
+
+def test_b1_ignores_link_down(db, flow_ctx):
+    """B1 is the do-nothing control and must stay inert, or it stops
+    being a control."""
+    remediation = FakeRemediation(_graph())
+    loop = _make_loop(db, flow_ctx, remediation=remediation)
+    loop.system = "B1_SHORTEST_PATH"
+    loop.install_initial_path()
+    before = len(remediation.calls)
+
+    loop.on_link_down(loop._active_path_link_ids()[0])
+
+    assert len(remediation.calls) == before
+
+
+def test_link_down_marks_the_link_failed(db, flow_ctx):
+    loop = _make_loop(db, flow_ctx)
+    loop.install_initial_path()
+    link = loop._active_path_link_ids()[0]
+    db.insert("links", {
+        "link_id": link, "src_switch": "s1", "src_port": 1,
+        "dst_switch": "s3", "dst_port": 1, "state": "HEALTHY",
+        "last_updated": 0.0,
+    })
+
+    loop.on_link_down(link)
+
+    row = db.query_one("SELECT state FROM links WHERE link_id = ?", (link,))
+    assert row["state"] == "FAILED"
+
+
+def test_link_down_does_not_start_a_second_remediation(db, flow_ctx):
+    loop = _make_loop(db, flow_ctx)
+    loop.install_initial_path()
+    loop._remediation_in_flight = True
+    remediation_calls_before = len(loop.remediation.calls)
+
+    loop.on_link_down(loop._active_path_link_ids()[0])
+
+    assert len(loop.remediation.calls) == remediation_calls_before

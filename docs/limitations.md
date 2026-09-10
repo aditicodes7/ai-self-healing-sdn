@@ -333,6 +333,59 @@ sim-to-real gap on top of the queueing-delay one documented above, and
 should be stated in the technical paper's RL methodology section
 alongside it.
 
+## The ML predictor structurally cannot detect a hard link failure
+
+E2 scored 0/5 on `link_failure`, and adding the missing background
+traffic did NOT fix it. The per-link data shows why:
+
+| | predictions | max P(degradation) |
+|---|---:|---:|
+| before the link was cut | 57 | 0.050 |
+| after the link was cut | 87 | **0.034** |
+
+The model rated the dead link as *healthier than before it died*. Two
+independent reasons, both structural rather than tunable:
+
+1. **A dead link is indistinguishable from an idle one in this feature
+   set.** It carries no traffic (utilization ~ 0) and returns no latency
+   probes, and `loss_rate`/`error_rate` are identically zero on this
+   platform anyway (see the veth/netem entry above). Low utilization and
+   absent latency is exactly what a quiet healthy link looks like.
+2. **The labels do not cover it.** The model is trained to predict
+   degradation ~10 s BEFORE onset (`label.horizon_s`). A link that has
+   already gone is not about to degrade; there is no future event left
+   to predict.
+
+**Resolved by adding a second detection path, not by retuning.**
+`HealingLoop.on_link_down` is driven by LLDP's own link-removal event,
+which `TopologyManager` already received and previously discarded.
+Persistence is deliberately bypassed there: that gate exists to filter
+uncertain *predictions* across several windows, and a link's
+disappearance is an observed fact -- making a certainty wait for
+corroboration only adds latency. Verified live on the same fault that
+scored 0/5: **2/2 detected, recovery in 20.2 s and 20.1 s.**
+
+Two design points worth stating in the paper:
+
+* The capability is given to B2/P1/P2 but NOT to B1. Reacting to a
+  link-down event is a control-plane capability, not a learned one;
+  attributing it to the ML arm would make P2 beat B2 on `link_failure`
+  for a reason that has nothing to do with prediction. B1 remains the
+  inert control.
+* So the system now has two detection mechanisms for two fault classes:
+  gradual degradation via the predictor (with persistence), hard failure
+  via topology events (immediate). That division should be described
+  honestly rather than presenting a single "detection rate" that
+  averages across mechanisms which work entirely differently.
+
+A related state-machine bug surfaced while implementing this: the link
+was marked FAILED, then the remediation path overwrote it -- first with
+DEGRADED as the incident opened, then AT_RISK once the reroute verified
+-- so a physically dead link was displayed as merely "starting to look
+risky". Rerouting around a link is not repairing it. FAILED is now
+sticky, cleared only by discovery seeing the link return or by the
+stale-state expiry.
+
 ## Phase 22 E2: the experiment harness under-loaded the network
 
 E2 ran all six fault types (60 trials, B1 control vs P2 full system) and

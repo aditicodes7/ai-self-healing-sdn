@@ -49,6 +49,12 @@ class TopologyManager(app_manager.RyuApp):
         super().__init__(*args, **kwargs)
         self.graph: nx.Graph = nx.Graph()
         self.spanning_tree_edges: set[frozenset] = set()
+        # Callbacks fired when a discovered link disappears. The healing
+        # loop registers here so a hard failure triggers remediation
+        # directly: the ML predictor cannot see one (a dead link looks
+        # idle, and its labels only cover degradation that has yet to
+        # happen), so LLDP's own removal event is the signal.
+        self._link_removed_callbacks: list = []
 
         cfg = load_config()
         self._db = Database(REPO_ROOT / cfg.database.path, wal=cfg.database.wal)
@@ -64,6 +70,9 @@ class TopologyManager(app_manager.RyuApp):
         except Exception:
             logger.exception("could not load topology spec for link capacities")
             self._link_capacities_bps = {}
+
+    def register_link_removed_callback(self, callback) -> None:
+        self._link_removed_callbacks.append(callback)
 
     @set_ev_cls(topo_event.EventSwitchEnter)
     def _switch_enter(self, ev):
@@ -95,7 +104,24 @@ class TopologyManager(app_manager.RyuApp):
                 ports={link.src.dpid: link.src.port_no, link.dst.dpid: link.dst.port_no},
             )
 
+        previous_edges = {
+            "-".join(sorted((f"s{u}", f"s{v}"))) for u, v in self.graph.edges()
+        }
+        current_edges = {
+            "-".join(sorted((f"s{u}", f"s{v}"))) for u, v in graph.edges()
+        }
+
         self.graph = graph
+        for link_id in sorted(previous_edges - current_edges):
+            logger.info("link disappeared from topology", extra={"link_id": link_id})
+            for callback in self._link_removed_callbacks:
+                try:
+                    callback(link_id)
+                except Exception:
+                    # One listener failing must never stop topology
+                    # tracking; discovery is what everything else needs.
+                    logger.exception("link-removed callback failed", extra={"link_id": link_id})
+
         if graph.number_of_edges() > 0:
             mst = nx.minimum_spanning_tree(graph)
             self.spanning_tree_edges = {frozenset(e) for e in mst.edges()}
