@@ -333,6 +333,44 @@ sim-to-real gap on top of the queueing-delay one documented above, and
 should be stated in the technical paper's RL methodology section
 alongside it.
 
+## Host sleep suspends the VM, and the clock step afterwards is the real hazard
+
+This machine is configured to sleep after 1 minute idle, and had slept
+and woken 16 times during E2's third attempt. Each sleep suspends the
+qemu process, freezing the VM.
+
+The freeze itself is probably benign for correctness: the entire
+emulated network -- hosts, switches, links, controller, inference
+service -- lives inside that VM, so everything stops and resumes
+together, and guest-relative durations stay coherent. Nothing outside
+the VM participates in a trial.
+
+The clock step afterwards is not benign. Measured directly: the guest
+clock was 76 minutes behind the host (VM 17:51 vs host 19:07), and
+minutes later chrony had stepped it forward to match. Recovery and
+detection latencies are computed from wall-clock timestamps written to
+the database, so a trial spanning that step has its timings inflated by
+the size of the step. Unlike the freeze, this corrupts numbers rather
+than merely delaying them.
+
+**Mitigations, in order of reliability.** `caffeinate` is held for the
+duration of a run so the host cannot sleep and no step occurs -- this
+is the actual fix, and it treats the cause. As a backstop, every trial
+records `duration_s`, and a trial whose duration is wildly out of family
+(~5 minutes here) is flagged and reported rather than averaged in; a
+76-minute step is not subtle in that column. The same check catches the
+unbounded-iperf3 stall described above, which is why it is worth running
+over any batch rather than only when a problem is suspected.
+
+**Not fixed by switching to a monotonic clock.** That would be the
+textbook answer for durations, but the timings here are derived from
+wall-clock timestamps that several tables record independently and
+correlate across (incidents, route_changes, verification_results), and
+those need a shared absolute time base. Changing it is a real refactor
+with its own risk of skew, not a one-line fix, and is not worth doing
+mid-experiment. Recorded here as a known weakness rather than presented
+as solved.
+
 ## An unbounded iperf3 could take a measurement long after its window
 
 Found while watching E2's third attempt: one trial took 21 minutes
