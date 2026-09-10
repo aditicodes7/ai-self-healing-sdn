@@ -1,0 +1,17 @@
+{
+  "_comment": [
+    "Run ids in results/experiments.db that must never appear in an analysis.",
+    "experiments/analyze.py reads this file by default and drops these rows.",
+    "The rows themselves are NEVER deleted -- a discarded run stays on record,",
+    "and the reason it was discarded is part of the record. Override with",
+    "--include-invalidated only to inspect what was thrown away."
+  ],
+  "excluded": [
+    {
+      "experiment": "E2",
+      "id_range": [24, 84],
+      "recorded": "2026-09-10",
+      "reason": "Two superseded E2 attempts. The first ran without continuous background traffic, so the network was under-loaded relative to the regime the model was trained in. The second was CPU-starved by wedged multipass clients on the host, and because the arms run sequentially the starvation covered the entire B1 baseline arm and none of P2 -- confounding host CPU with the system under test. See docs/limitations.md."
+    }
+  ]
+}

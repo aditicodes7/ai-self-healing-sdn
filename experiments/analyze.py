@@ -134,7 +134,34 @@ def main() -> int:
             "other experiment in the analysis, and the row stays on record."
         ),
     )
+    parser.add_argument(
+        "--include-invalidated", action="store_true",
+        help=(
+            "Analyse rows listed in results/invalidated_runs.json too. "
+            "Only for inspecting what was discarded -- never for a "
+            "reported number."
+        ),
+    )
     args = parser.parse_args()
+
+    # Runs already ruled invalid are dropped unless explicitly asked for.
+    # Relying on whoever runs this to remember the right --exclude-ids
+    # failed once already: results/tables/experiment_results.json shipped
+    # E2 numbers from a run that had been declared invalid in the very
+    # commit that declared it, and the dashboard displayed them as
+    # measured evidence. The exclusion list now lives with the data.
+    excluded = set(args.exclude_ids or [])
+    invalidated_path = REPO_ROOT / "results" / "invalidated_runs.json"
+    if not args.include_invalidated and invalidated_path.exists():
+        record = json.loads(invalidated_path.read_text())
+        for entry in record.get("excluded", []):
+            low, high = entry["id_range"]
+            excluded.update(range(low, high + 1))
+            print(
+                f"excluding ids {low}-{high} ({entry['experiment']}): "
+                f"{entry['reason'].splitlines()[0]}"
+            )
+    args.exclude_ids = sorted(excluded)
 
     db_path = Path(args.db)
     if not db_path.exists():

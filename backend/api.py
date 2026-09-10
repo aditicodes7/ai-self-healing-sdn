@@ -233,6 +233,53 @@ def get_results() -> dict:
     return out
 
 
+@app.get("/api/experiment_plan")
+def get_experiment_plan() -> dict:
+    """What each experiment is meant to prove, and whether it has been
+    measured yet.
+
+    The plan half is read from experiments/definitions.py rather than
+    restated here, so the dashboard cannot drift from the experiments
+    that actually run. The status half keys off
+    results/tables/experiment_results.json -- the analysed output --
+    rather than counting rows in experiments.db. That distinction is
+    deliberate: the raw table still holds trials from superseded runs
+    (an E2 attempt whose baseline arm ran CPU-starved, see
+    docs/limitations.md), and counting those would present discarded
+    work as evidence. An experiment reports as measured only once
+    analyze.py has produced numbers for it.
+    """
+    import dataclasses
+
+    from experiments.definitions import EXPERIMENTS
+
+    analysed_path = REPO_ROOT / "results" / "tables" / "experiment_results.json"
+    analysed: dict = {}
+    if analysed_path.exists():
+        try:
+            analysed = json.loads(analysed_path.read_text()).get("results", {})
+        except ValueError:
+            analysed = {}
+
+    plan = []
+    for exp in EXPERIMENTS:
+        d = dataclasses.asdict(exp)
+        prefix = f"{d['experiment_id']}/"
+        measured = {k.split("/", 1)[1]: v for k, v in analysed.items() if k.startswith(prefix)}
+        plan.append({
+            "experiment_id": d["experiment_id"],
+            "title": d["title"],
+            "claim": d["claim"],
+            "systems": list(d["systems"]),
+            "faults": list(d["faults"]),
+            "notes": d.get("notes") or "",
+            "trials_planned": len(d["systems"]) * len(d["faults"]) * d["seeds_required"],
+            "status": "measured" if measured else "not_yet_run",
+            "trials_analysed": sum(v.get("trials_usable", 0) for v in measured.values()),
+        })
+    return {"experiments": plan}
+
+
 # Result figures are served from results/figures, separately from the
 # dashboard's own static mount so the two cannot shadow each other.
 _figures_dir = REPO_ROOT / "results" / "figures"

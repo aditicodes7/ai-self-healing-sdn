@@ -730,6 +730,57 @@
     "Throughput retained is a confounded metric on this topology: the shortest-hop path is also the lowest-capacity one, so any reroute gains throughput.",
   ];
 
+  // The four systems differ from each other in exactly one respect at a
+  // time, which is what makes any difference between them attributable.
+  // Spelled out here because "B1/B2/P1/P2" means nothing to a reader
+  // seeing this page for the first time.
+  const SYSTEM_LABELS = {
+    B1_SHORTEST_PATH: "static routing (never reacts)",
+    B2_RULE_BASED: "reacts after a threshold is crossed",
+    P1_ML_HEURISTIC: "predicts, then picks a path by formula",
+    P2_ML_RL: "predicts, then picks a path by learned policy",
+  };
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  async function loadPlan() {
+    const host = $("results-plan");
+    if (!host) return;
+    let data;
+    try {
+      data = await getJSON("/api/experiment_plan");
+    } catch (err) {
+      host.innerHTML = `<p class="empty-state">Could not load the experiment plan.</p>`;
+      return;
+    }
+    host.innerHTML = (data.experiments || []).map((e) => {
+      const measured = e.status === "measured";
+      // "Not yet run" is shown as a plain neutral state, not an error or
+      // a zero: an experiment that has not been measured has no result,
+      // which is different from having a result of nothing.
+      const badge = measured
+        ? `<span class="plan-badge plan-badge-done">${e.trials_analysed} trials analysed</span>`
+        : `<span class="plan-badge plan-badge-todo">not yet run &middot; ${e.trials_planned} trials planned</span>`;
+      const systems = e.systems.map((s) =>
+        `<li><span class="mono">${escapeHtml(s)}</span> &mdash; ${escapeHtml(SYSTEM_LABELS[s] || "")}</li>`
+      ).join("");
+      return `<article class="plan-item${measured ? " is-measured" : ""}">
+        <header class="plan-head">
+          <span class="plan-id">${escapeHtml(e.experiment_id)}</span>
+          <h3>${escapeHtml(e.title)}</h3>
+          ${badge}
+        </header>
+        <p class="plan-claim">${escapeHtml(e.claim)}</p>
+        <ul class="plan-systems">${systems}</ul>
+        <p class="plan-faults"><span class="plan-label">Faults</span> ${e.faults.map(escapeHtml).join(", ")}</p>
+        ${e.notes ? `<p class="plan-notes">${escapeHtml(e.notes)}</p>` : ""}
+      </article>`;
+    }).join("") || `<p class="empty-state">No experiments defined.</p>`;
+  }
+
   async function loadResults() {
     const grid = $("results-grid");
     let data;
@@ -775,6 +826,8 @@
     ).join("") || `<p class="empty-state">No figures generated yet.</p>`;
 
     $("results-limitations").innerHTML = LIMITATIONS.map((l) => `<li>${l}</li>`).join("");
+
+    loadPlan();
   }
 
   let resultsLoaded = false;

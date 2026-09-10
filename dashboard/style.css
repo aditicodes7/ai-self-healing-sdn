@@ -408,3 +408,95 @@ select, .ghost-btn, .tab {
 @media (max-width: 980px) {
   .results-grid { grid-template-columns: 1fr; }
 }
+
+/* ---- experiment plan (Results view) ---- */
+.plan-list {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+}
+
+.plan-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border);
+  /* A left rule rather than a full accent border: measured and
+     unmeasured entries should read as the same kind of thing at a
+     glance, differing only in state. */
+  border-left: 3px solid var(--border);
+  border-radius: 6px;
+}
+
+.plan-item.is-measured { border-left-color: var(--accent); }
+
+.plan-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.plan-head h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  flex: 1 1 auto;
+}
+
+.plan-id {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+}
+
+.plan-badge {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.plan-badge-done { background: var(--accent-dim); color: var(--text); }
+.plan-badge-todo {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.plan-claim { margin: 0; }
+
+.plan-systems {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.plan-systems .mono { color: var(--text); }
+
+.plan-faults, .plan-notes {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.plan-label {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-right: 4px;
+}
+
+.plan-notes {
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-style: italic;
+}
