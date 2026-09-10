@@ -98,15 +98,37 @@ def _start_background_traffic(net, duration_s: float) -> list:
 
 def _measure_flow(net, duration_s: int, port: int) -> dict:
     """One iperf3 h1->h6 sample plus a ping sample. Returns nulls for
-    anything that failed rather than substituting a number."""
+    anything that failed rather than substituting a number.
+
+    Both commands are wrapped in `timeout`. Mininet's `cmd()` blocks
+    until the command exits and offers no deadline of its own, so a
+    stalled iperf3 client hangs the whole trial: one E2 trial sat here
+    for 18 minutes (a 5-minute trial took 21), and the "after" sample it
+    eventually produced described the network a quarter of an hour past
+    the point it was meant to measure. Silent, and invisible in the
+    trial record -- only the log timestamps showed it. A measurement
+    that cannot be taken in its window must return None, which the
+    caller already handles; taking it late is worse than not taking it,
+    because a late number still looks like a valid one.
+
+    `--connect-timeout` bounds the setup phase specifically, which is
+    where a client stalls when the path is lossy -- exactly the
+    condition several fault types create.
+    """
     h1, h6 = net.get("h1"), net.get("h6")
-    result: dict = {"throughput_bps": None, "loss_percent": None, "rtt_avg_ms": None}
+    result: dict = {"throughput_bps": None, "loss_percent": None,
+                    "rtt_avg_ms": None, "measure_elapsed_s": None,
+                    "measure_timed_out": False}
+    started = time.time()
 
     server = h6.popen(["iperf3", "-s", "-p", str(port), "-1", "-J"],
                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(1)
     try:
-        out = h1.cmd(f"iperf3 -c {h6.IP()} -p {port} -t {duration_s} -J")
+        out = h1.cmd(
+            f"timeout {duration_s + 20} iperf3 -c {h6.IP()} -p {port} "
+            f"-t {duration_s} --connect-timeout 5000 -J"
+        )
         start = out.find("{")
         if start != -1:
             data = json.loads(out[start:out.rfind("}") + 1])
@@ -118,7 +140,7 @@ def _measure_flow(net, duration_s: int, port: int) -> dict:
         server.terminate()
 
     try:
-        ping_out = h1.cmd(f"ping -c 10 -i 0.2 -W 1 {h6.IP()}")
+        ping_out = h1.cmd(f"timeout 30 ping -c 10 -i 0.2 -W 1 {h6.IP()}")
         for line in ping_out.splitlines():
             if "packet loss" in line:
                 result["loss_percent"] = float(line.split("%")[0].split()[-1])
@@ -126,6 +148,13 @@ def _measure_flow(net, duration_s: int, port: int) -> dict:
                 result["rtt_avg_ms"] = float(line.split("=")[1].split("/")[1])
     except (ValueError, IndexError):
         pass
+
+    # Recorded so an over-long measurement is visible in the trial data
+    # itself, not only in log timestamps nobody re-reads. The budget is
+    # the two `timeout` values plus the 1s server settle and a little
+    # slack; exceeding it means something outside those bounds stalled.
+    result["measure_elapsed_s"] = time.time() - started
+    result["measure_timed_out"] = result["measure_elapsed_s"] > (duration_s + 20) + 30 + 5
 
     return result
 

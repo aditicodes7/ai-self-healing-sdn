@@ -333,6 +333,43 @@ sim-to-real gap on top of the queueing-delay one documented above, and
 should be stated in the technical paper's RL methodology section
 alongside it.
 
+## An unbounded iperf3 could take a measurement long after its window
+
+Found while watching E2's third attempt: one trial took 21 minutes
+instead of 5. The trial's own record showed nothing wrong -- same
+fields, same shape as every other trial. Only the log timestamps showed
+that `_measure_flow`'s post-fault sample had sat for **18 minutes**
+between the fault window closing and the measurement returning.
+
+`_measure_flow` runs iperf3 through Mininet's `cmd()`, which blocks
+until the command exits and has no deadline of its own. A stalled
+iperf3 client therefore hangs the trial indefinitely -- and the stall is
+most likely exactly when the path is lossy, which is what several of the
+injected fault types produce.
+
+**Why this matters beyond wasted time.** The sample is supposed to
+describe the network shortly after the fault window. Taken 18 minutes
+late, it describes a network where the fault has long since expired and
+the system has long since settled -- but it is still recorded in the
+`after` field and still feeds `throughput_retained_frac`. A late number
+looks exactly like a valid one. That is worse than a missing number,
+which the analysis already handles: `_measure_flow` returns None for
+anything it could not measure, and the aggregator reports n and marks
+underpowered cells rather than filling them in.
+
+Both commands are now wrapped in `timeout`, with `--connect-timeout` on
+iperf3 to bound the setup phase specifically, and each measurement
+records `measure_elapsed_s` and `measure_timed_out` so an over-long
+sample is visible in the trial data rather than only in log timestamps.
+
+**The E2 run in progress was deliberately NOT restarted for this.** Its
+60 trials all execute under the already-loaded code, so that run stays
+internally consistent, which is what its within-run comparison needs.
+The fix applies from E3 onward, and that difference is disclosed here
+rather than being smoothed over. Trials from this E2 run whose recorded
+duration is anomalous are identified after the fact and reported
+separately.
+
 ## E2, attempt 2: the measuring apparatus starved the machine under test
 
 Discarded 30 completed baseline trials (2026-09-10). Kept as
