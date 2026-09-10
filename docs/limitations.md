@@ -333,6 +333,51 @@ sim-to-real gap on top of the queueing-delay one documented above, and
 should be stated in the technical paper's RL methodology section
 alongside it.
 
+## E2, attempt 2: the measuring apparatus starved the machine under test
+
+Discarded 30 completed baseline trials (2026-09-10). Kept as
+`results/E2_runner_DISCARDED_cpu_starved.log`; no number from it appears
+anywhere in this project's results.
+
+The runner was launched detached and correctly, and three host-side
+watchers were set up to follow it: a status poll, a `tail -f` on the
+runner log, and a loop waiting for the run to end. Each held a
+`multipass exec` client. All three wedged -- and a wedged multipass
+client does not idle, it spins at ~100% CPU indefinitely, after the
+remote command has already finished. Measured 3 hours in: three clients
+at ~175 minutes of CPU each, taking 3 of this Mac's 8 cores. qemu's CPU
+share was 34.6%; killing the three watchers took it to **246%**. The VM
+had been running the experiment on roughly a seventh of the processor it
+should have had.
+
+**Why the trials were discarded rather than kept with a caveat.** The
+slowdown alone would have been tolerable and disclosable. What is not is
+*when it ended*: the starvation covered the whole B1 baseline arm and
+none of the P2 arm, because the arms run sequentially and the watchers
+were killed in between. Host CPU availability would then have been
+perfectly confounded with the system under test -- a B1-vs-P2 comparison
+would partly be measuring the monitoring bug. Trial wall-times were
+stable throughout (~5:05-5:20, dominated by fixed sleeps), so the fault
+was invisible in the run's own output; only the host process table
+showed it.
+
+**Fixed structurally, not by remembering to be careful.**
+`scripts/vm_exec.sh` wraps every VM command in a host-side watchdog that
+kills the client unconditionally at a deadline (macOS ships no
+`timeout`), and no long-lived `multipass exec` is held any more -- no
+`tail -f`, no poll loop wrapped around one. Progress is now sampled
+infrequently through that wrapper.
+
+**This is the fourth instance of one recurring root cause in this
+project: a measurement taken under conditions that did not match the
+conditions being claimed.** The first three were the controller's own
+inference inflating the latency it measured, dataset generation running
+under a load the model would never see, and the experiment harness
+under-loading the network relative to training. This one is the same
+mistake made from the outside -- the observer competing with the
+observed for CPU. Worth stating in the paper's threats-to-validity
+section as a pattern, not four separate mishaps.
+
 ## The ML predictor structurally cannot detect a hard link failure
 
 E2 scored 0/5 on `link_failure`, and adding the missing background
