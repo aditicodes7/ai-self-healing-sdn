@@ -47,6 +47,7 @@ class RLClient:
         time_since_last_reroute_s: float,
         global_mean_utilization: float,
         global_max_utilization: float,
+        allow_hold: bool = True,
     ) -> RouteDecision | None:
         """Returns a RouteDecision on success, or None if the service is
         unreachable, times out, or returns something unusable -- the
@@ -60,6 +61,7 @@ class RLClient:
                 lid: {"utilization": m.utilization, "latency_ms": m.latency_ms, "loss_rate": m.loss_rate}
                 for lid, m in link_metrics.items()
             },
+            "allow_hold": allow_hold,
             "degradation_probs": degradation_probs,
             "degraded_link_id": degraded_link_id,
             "current_path": current_path,

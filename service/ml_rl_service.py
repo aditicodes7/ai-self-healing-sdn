@@ -152,6 +152,9 @@ class RouteRequest(BaseModel):
     time_since_last_reroute_s: float
     global_mean_utilization: float
     global_max_utilization: float
+    # Defaults True so an older client keeps its existing behaviour; the
+    # controller sends False when it is remediating an open incident.
+    allow_hold: bool = True
 
 
 class RouteResponse(BaseModel):
@@ -285,7 +288,7 @@ def infer_route(req: RouteRequest):
         # the network as a silently-wrong action -- fail loudly instead.
         raise HTTPException(status_code=422, detail="constructed state vector is malformed or non-finite")
 
-    mask = get_action_mask(len(req.candidates), _rl_k)
+    mask = get_action_mask(len(req.candidates), _rl_k, allow_hold=req.allow_hold)
     action, _ = _rl_model.predict(state, action_masks=mask, deterministic=True)
     action = int(action)
     inference_ms = (time.perf_counter() - t0) * 1000.0

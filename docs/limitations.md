@@ -333,6 +333,62 @@ sim-to-real gap on top of the queueing-delay one documented above, and
 should be stated in the technical paper's RL methodology section
 alongside it.
 
+## E6, attempt 1: the RL was credited for decisions the heuristic made
+
+E6 exists to justify the RL half of the project: P1 and P2 are identical
+except for path selection, so any difference between them is
+attributable to the learned policy. The first run showed no difference
+-- P1 and P2 statistically indistinguishable on every metric (recovery
+68.3 +/- 17.3s vs 68.5 +/- 29.9s, throughput retained 97.4 +/- 0.4% vs
+97.9 +/- 0.4%, overlapping intervals).
+
+That tie is not a result about the RL. Checking which component actually
+chose each path:
+
+| | selections | made by |
+|---|---:|---|
+| P2, policy chose | 4 | the RL |
+| P2, policy declined | **7** | the weighted-cost heuristic |
+
+In 7 of 11 selections the policy returned action 0 ("do not reroute"),
+`remediation_manager` recorded `rl_selected_no_reroute`, discarded the
+answer and fell back to the heuristic. So roughly two thirds of P2's
+decisions were made by P1's algorithm, and E6 was substantially
+comparing the heuristic against itself. A tie was the expected outcome
+of the setup, and says nothing about path quality.
+
+**Why the policy kept declining, and why masking is the fix.** The
+policy is consulted only after the healing loop has opened an incident
+and persistence is satisfied -- the decision to act has already been
+made. "Hold" in that context contradicts the call itself. The action
+mask is the mechanism built for exactly this: `get_action_mask` now
+takes `allow_hold`, and remediation passes False, so MaskablePPO
+renormalises over the reroute actions and the policy returns its best
+REROUTE rather than an answer the caller will throw away. Hold remains
+valid when there are no candidates, since a mask with no valid action is
+undefined.
+
+This is a production fix, not an experiment-only switch. The previous
+behaviour did not respect the policy's veto either -- it overrode it with
+the heuristic. The change is about which component decides when the
+policy declines, and the honest answer is the one the system is built to
+use.
+
+**The first E6 batch (ids 203-232) is therefore not a valid test of its
+own claim** and is excluded in `results/invalidated_runs.json`. Note it
+is not wrong data -- the trials ran cleanly, no duration anomalies, no
+errors -- it simply does not measure what E6 says it measures.
+
+**Fifth instance of the same root cause**: a measurement taken under
+conditions that did not match the conditions being claimed. The first
+four were the controller's inference inflating its own latency, dataset
+generation under a load the model would never see, the harness
+under-loading the network, and the observer starving the VM of CPU. This
+one is the subtlest -- the experiment ran perfectly and measured the
+wrong thing -- and it is the strongest argument for the practice that
+caught it: checking WHICH COMPONENT produced each decision, not just what
+the aggregate numbers say.
+
 ## E3 FALSIFIES the lead-time claim, and exposed an inflated detection metric
 
 E3 was written to test the project's central claim -- that prediction

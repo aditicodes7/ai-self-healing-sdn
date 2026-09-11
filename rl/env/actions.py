@@ -14,10 +14,31 @@ def num_actions(k: int) -> int:
     return k + 1
 
 
-def get_action_mask(num_candidates: int, k: int) -> np.ndarray:
+def get_action_mask(num_candidates: int, k: int, allow_hold: bool = True) -> np.ndarray:
+    """Valid actions for this state. Action 0 is "do not reroute".
+
+    `allow_hold=False` masks action 0 out, and exists because of what it
+    fixes. In live remediation the policy is consulted only AFTER the
+    healing loop has already decided to act -- an incident is open and
+    persistence is satisfied -- so "hold" there contradicts the decision
+    that caused the call. The caller already refused to honour it
+    (remediation_manager's `rl_selected_no_reroute`) and quietly used the
+    weighted-cost heuristic instead. Measured in E6: that happened in 7
+    of 11 selections, so the learned policy was making barely a third of
+    the decisions attributed to it, and P1-vs-P2 was mostly comparing the
+    heuristic against itself.
+
+    Masking is the right mechanism rather than overriding the output
+    after the fact: MaskablePPO renormalises over the allowed actions, so
+    the policy picks its best REROUTE, instead of us discarding its
+    answer and asking a different algorithm. Hold stays available when
+    there is nothing to switch to, since a mask with no valid action is
+    undefined.
+    """
     mask = np.zeros(k + 1, dtype=bool)
-    mask[0] = True  # "do not reroute" is always valid, even with zero candidates
-    mask[1 : 1 + min(num_candidates, k)] = True
+    usable = min(num_candidates, k)
+    mask[1 : 1 + usable] = True
+    mask[0] = allow_hold or usable == 0
     return mask
 
 

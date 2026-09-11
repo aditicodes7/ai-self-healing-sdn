@@ -154,11 +154,12 @@ class FakeRLClient:
 
     def select_route(self, src_dpid, dst_dpid, candidates, link_metrics, degradation_probs,
                       degraded_link_id, current_path, time_since_last_reroute_s,
-                      global_mean_utilization, global_max_utilization):
+                      global_mean_utilization, global_max_utilization, allow_hold=True):
         self.calls.append(
             {
                 "src_dpid": src_dpid, "dst_dpid": dst_dpid, "candidates": candidates,
                 "current_path": current_path, "degraded_link_id": degraded_link_id,
+                "allow_hold": allow_hold,
             }
         )
         return self.decision
@@ -371,3 +372,29 @@ def test_no_viable_candidate_for_rl_is_reported_distinctly(db, manager_with_rl, 
 
     row = db.query_one("SELECT * FROM route_changes WHERE incident_id = ?", ("inc-1",))
     assert row["rl_fallback_reason"] == "no_viable_candidate_for_rl"
+
+
+def test_rl_is_not_allowed_to_answer_hold_during_remediation(db, manager_with_rl, flow_ctx):
+    """The policy is consulted only after the healing loop has opened an
+    incident and persistence is satisfied, so "do not reroute" there
+    contradicts the decision that caused the call.
+
+    Measured in E6 before this was fixed: the policy answered action 0 in
+    7 of 11 selections, the manager discarded the answer
+    (`rl_selected_no_reroute`) and used the weighted-cost heuristic
+    instead. P1 and P2 are supposed to differ ONLY in path selection, so
+    that quietly turned the experiment into the heuristic compared against
+    itself, with the RL credited for decisions it did not make.
+    """
+    _open_incident(db, "inc-1", "s1-s3")
+    rl_client = RecordingRLClient(FakeRLDecision(action=1, chosen_path=[1, 2, 3, 6]))
+    manager = manager_with_rl(rl_client)
+
+    manager.remediate("inc-1", "s1-s3", flow_ctx, _scenario_a_graph(), {},
+                      _all_datapaths(), [[1, 3, 6]])
+
+    assert rl_client.calls, "the policy should have been consulted"
+    assert rl_client.calls[-1]["allow_hold"] is False, (
+        "remediation must mask out the hold action; letting the policy decline "
+        "hands the decision to the heuristic and misattributes it to the RL"
+    )

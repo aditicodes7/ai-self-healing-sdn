@@ -1,7 +1,7 @@
 {
-  "generated_at": 1789112624.938689,
+  "generated_at": 1789123810.0773811,
   "data_source": "emulated_mininet",
-  "total_trials_recorded": 101,
+  "total_trials_recorded": 131,
   "results": {
     "E1/B1_SHORTEST_PATH": {
       "trials_run": 6,
@@ -512,6 +512,136 @@
         "FAILED": 0
       },
       "rl_fallbacks": 3
+    },
+    "E6/P1_ML_HEURISTIC": {
+      "trials_run": 15,
+      "trials_usable": 15,
+      "trials_errored": 0,
+      "errors": [],
+      "detection_rate": 0.5333333333333333,
+      "detection_rate_in_fault": 0.5333333333333333,
+      "detections_after_fault_ended": 0,
+      "detection_latency_in_fault_s": {
+        "mean": 60.27692773938179,
+        "sd": 25.034973901756764,
+        "ci95": 17.34835181650524,
+        "n": 8,
+        "underpowered": false
+      },
+      "recovery_rate": 0.5333333333333333,
+      "detection_latency_s": {
+        "mean": 60.27692773938179,
+        "sd": 25.034973901756764,
+        "ci95": 17.34835181650524,
+        "n": 8,
+        "underpowered": false
+      },
+      "recovery_time_s": {
+        "mean": 68.30636540055275,
+        "sd": 25.024011877028215,
+        "ci95": 17.340755520924567,
+        "n": 8,
+        "underpowered": false
+      },
+      "reroute_count": {
+        "mean": 0.6666666666666666,
+        "sd": 0.7237468644557459,
+        "ci95": 0.36626644824650684,
+        "n": 15,
+        "underpowered": false
+      },
+      "throughput_retained_frac": {
+        "mean": 0.9736569630366985,
+        "sd": 0.004318643495335289,
+        "ci95": 0.0037854579270535445,
+        "n": 5,
+        "underpowered": false
+      },
+      "loss_percent_during_fault": {
+        "mean": 66.66666666666667,
+        "sd": 48.79500364742666,
+        "ci95": 24.69367890326951,
+        "n": 15,
+        "underpowered": false
+      },
+      "rtt_ms_during_fault": {
+        "mean": 116.32840000000002,
+        "sd": 2.3494622363426063,
+        "ci95": 2.059394450244052,
+        "n": 5,
+        "underpowered": false
+      },
+      "verification_outcomes": {
+        "SUCCESS": 7,
+        "PARTIAL": 1,
+        "FAILED": 0
+      },
+      "rl_fallbacks": 0
+    },
+    "E6/P2_ML_RL": {
+      "trials_run": 15,
+      "trials_usable": 15,
+      "trials_errored": 0,
+      "errors": [],
+      "detection_rate": 0.6666666666666666,
+      "detection_rate_in_fault": 0.6,
+      "detections_after_fault_ended": 1,
+      "detection_latency_in_fault_s": {
+        "mean": 49.115274084938896,
+        "sd": 34.35911093723175,
+        "ci95": 22.447952478991407,
+        "n": 9,
+        "underpowered": false
+      },
+      "recovery_rate": 0.6666666666666666,
+      "detection_latency_s": {
+        "mean": 60.432385206222534,
+        "sd": 48.271590917098486,
+        "ci95": 29.919042021273768,
+        "n": 10,
+        "underpowered": false
+      },
+      "recovery_time_s": {
+        "mean": 68.4696178674698,
+        "sd": 48.27431440964504,
+        "ci95": 29.920730059442736,
+        "n": 10,
+        "underpowered": false
+      },
+      "reroute_count": {
+        "mean": 0.7333333333333333,
+        "sd": 0.5936168397046637,
+        "ci95": 0.30041156953604686,
+        "n": 15,
+        "underpowered": false
+      },
+      "throughput_retained_frac": {
+        "mean": 0.9791861395848519,
+        "sd": 0.0039652523395873425,
+        "ci95": 0.003475696921468892,
+        "n": 5,
+        "underpowered": false
+      },
+      "loss_percent_during_fault": {
+        "mean": 66.66666666666667,
+        "sd": 48.79500364742666,
+        "ci95": 24.69367890326951,
+        "n": 15,
+        "underpowered": false
+      },
+      "rtt_ms_during_fault": {
+        "mean": 117.7028,
+        "sd": 2.4839095595451965,
+        "ci95": 2.1772427250410114,
+        "n": 5,
+        "underpowered": false
+      },
+      "verification_outcomes": {
+        "SUCCESS": 9,
+        "PARTIAL": 1,
+        "FAILED": 0
+      },
+      "rl_fallbacks": 7
     }
   },
   "by_fault": {
@@ -1770,6 +1900,382 @@
         "FAILED": 0
       },
       "rl_fallbacks": 2
+    },
+    "E6/P1_ML_HEURISTIC/congestion": {
+      "trials_run": 5,
+      "trials_usable": 5,
+      "trials_errored": 0,
+      "errors": [],
+      "detection_rate": 0.6,
+      "detection_rate_in_fault": 0.6,
+      "detections_after_fault_ended": 0,
+      "detection_latency_in_fault_s": {
+        "mean": 48.11317880948385,
+        "sd": 34.98886354840399,
+        "ci95": 39.59362638508786,
+        "n": 3,
+        "underpowered": false
+      },
+      "recovery_rate": 0.6,
+      "detection_latency_s": {
+        "mean": 48.11317880948385,
+        "sd": 34.98886354840399,
+        "ci95": 39.59362638508786,
+        "n": 3,
+        "underpowered": false
+      },
+      "recovery_time_s": {
+        "mean": 56.15136464436849,
+        "sd": 34.973795426988104,
+        "ci95": 39.57657520053479,
+        "n": 3,
+        "underpowered": false
+      },
+      "reroute_count": {
+        "mean": 1.0,
+        "sd": 1.0,
+        "ci95": 0.8765386471799175,
+        "n": 5,
+        "underpowered": false
+      },
+      "throughput_retained_frac": {
+        "mean": null,
+        "ci95": null,
+        "n": 0,
+        "underpowered": true
+      },
+      "loss_percent_during_fault": {
+        "mean": 100.0,
+        "sd": 0.0,
+        "ci95": 0.0,
+        "n": 5,
+        "underpowered": false
+      },
+      "rtt_ms_during_fault": {
+        "mean": null,
+        "ci95": null,
+        "n": 0,
+        "underpowered": true
+      },
+      "verification_outcomes": {
+        "SUCCESS": 3,
+        "PARTIAL": 0,
+        "FAILED": 0
+      },
+      "rl_fallbacks": 0
+    },
+    "E6/P1_ML_HEURISTIC/gradual_degradation": {
+      "trials_run": 5,
+      "trials_usable": 5,
+      "trials_errored": 0,
+      "errors": [],
+      "detection_rate": 1.0,
+      "detection_rate_in_fault": 1.0,
+      "detections_after_fault_ended": 0,
+      "detection_latency_in_fault_s": {
+        "mean": 67.57517709732056,
+        "sd": 17.525807402740256,
+        "ci95": 15.362047511533728,
+        "n": 5,
+        "underpowered": false
+      },
+      "recovery_rate": 1.0,
+      "detection_latency_s": {
+        "mean": 67.57517709732056,
+        "sd": 17.525807402740256,
+        "ci95": 15.362047511533728,
+        "n": 5,
+        "underpowered": false
+      },
+      "recovery_time_s": {
+        "mean": 75.59936585426331,
+        "sd": 17.520730946340993,
+        "ci95": 15.357597801309051,
+        "n": 5,
+        "underpowered": false
+      },
+      "reroute_count": {
+        "mean": 1.0,
+        "sd": 0.0,
+        "ci95": 0.0,
+        "n": 5,
+        "underpowered": false
+      },
+      "throughput_retained_frac": {
+        "mean": null,
+        "ci95": null,
+        "n": 0,
+        "underpowered": true
+      },
+      "loss_percent_during_fault": {
+        "mean": 100.0,
+        "sd": 0.0,
+        "ci95": 0.0,
+        "n": 5,
+        "underpowered": false
+      },
+      "rtt_ms_during_fault": {
+        "mean": null,
+        "ci95": null,
+        "n": 0,
+        "underpowered": true
+      },
+      "verification_outcomes": {
+        "SUCCESS": 4,
+        "PARTIAL": 1,
+        "FAILED": 0
+      },
+      "rl_fallbacks": 0
+    },
+    "E6/P1_ML_HEURISTIC/high_latency": {
+      "trials_run": 5,
+      "trials_usable": 5,
+      "trials_errored": 0,
+      "errors": [],
+      "detection_rate": 0.0,
+      "detection_rate_in_fault": 0.0,
+      "detections_after_fault_ended": 0,
+      "detection_latency_in_fault_s": {
+        "mean": null,
+        "ci95": null,
+        "n": 0,
+        "underpowered": true
+      },
+      "recovery_rate": 0.0,
+      "detection_latency_s": {
+        "mean": null,
+        "ci95": null,
+        "n": 0,
+        "underpowered": true
+      },
+      "recovery_time_s": {
+        "mean": null,
+        "ci95": null,
+        "n": 0,
+        "underpowered": true
+      },
+      "reroute_count": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "ci95": 0.0,
+        "n": 5,
+        "underpowered": false
+      },
+      "throughput_retained_frac": {
+        "mean": 0.9736569630366985,
+        "sd": 0.004318643495335289,
+        "ci95": 0.0037854579270535445,
+        "n": 5,
+        "underpowered": false
+      },
+      "loss_percent_during_fault": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "ci95": 0.0,
+        "n": 5,
+        "underpowered": false
+      },
+      "rtt_ms_during_fault": {
+        "mean": 116.32840000000002,
+        "sd": 2.3494622363426063,
+        "ci95": 2.059394450244052,
+        "n": 5,
+        "underpowered": false
+      },
+      "verification_outcomes": {
+        "SUCCESS": 0,
+        "PARTIAL": 0,
+        "FAILED": 0
+      },
+      "rl_fallbacks": 0
+    },
+    "E6/P2_ML_RL/congestion": {
+      "trials_run": 5,
+      "trials_usable": 5,
+      "trials_errored": 0,
+      "errors": [],
+      "detection_rate": 0.8,
+      "detection_rate_in_fault": 0.8,
+      "detections_after_fault_ended": 0,
+      "detection_latency_in_fault_s": {
+        "mean": 49.506549179553986,
+        "sd": 41.04262646089549,
+        "ci95": 40.22177393167758,
+        "n": 4,
+        "underpowered": false
+      },
+      "recovery_rate": 0.8,
+      "detection_latency_s": {
+        "mean": 49.506549179553986,
+        "sd": 41.04262646089549,
+        "ci95": 40.22177393167758,
+        "n": 4,
+        "underpowered": false
+      },
+      "recovery_time_s": {
+        "mean": 57.54260188341141,
+        "sd": 41.042873681348276,
+        "ci95": 40.22201620772131,
+        "n": 4,
+        "underpowered": false
+      },
+      "reroute_count": {
+        "mean": 0.8,
+        "sd": 0.4472135954999579,
+        "ci95": 0.39199999999999996,
+        "n": 5,
+        "underpowered": false
+      },
+      "throughput_retained_frac": {
+        "mean": null,
+        "ci95": null,
+        "n": 0,
+        "underpowered": true
+      },
+      "loss_percent_during_fault": {
+        "mean": 100.0,
+        "sd": 0.0,
+        "ci95": 0.0,
+        "n": 5,
+        "underpowered": false
+      },
+      "rtt_ms_during_fault": {
+        "mean": null,
+        "ci95": null,
+        "n": 0,
+        "underpowered": true
+      },
+      "verification_outcomes": {
+        "SUCCESS": 4,
+        "PARTIAL": 0,
+        "FAILED": 0
+      },
+      "rl_fallbacks": 3
+    },
+    "E6/P2_ML_RL/gradual_degradation": {
+      "trials_run": 5,
+      "trials_usable": 5,
+      "trials_errored": 0,
+      "errors": [],
+      "detection_rate": 1.0,
+      "detection_rate_in_fault": 0.8,
+      "detections_after_fault_ended": 1,
+      "detection_latency_in_fault_s": {
+        "mean": 40.276681780815125,
+        "sd": 31.284109628097557,
+        "ci95": 30.658427435535604,
+        "n": 4,
+        "underpowered": false
+      },
+      "recovery_rate": 1.0,
+      "detection_latency_s": {
+        "mean": 64.67862248420715,
+        "sd": 60.92040041625156,
+        "ci95": 53.399085366520026,
+        "n": 5,
+        "underpowered": false
+      },
+      "recovery_time_s": {
+        "mean": 72.71724562644958,
+        "sd": 60.925004079620514,
+        "ci95": 53.40312065538152,
+        "n": 5,
+        "underpowered": false
+      },
+      "reroute_count": {
+        "mean": 1.0,
+        "sd": 0.0,
+        "ci95": 0.0,
+        "n": 5,
+        "underpowered": false
+      },
+      "throughput_retained_frac": {
+        "mean": null,
+        "ci95": null,
+        "n": 0,
+        "underpowered": true
+      },
+      "loss_percent_during_fault": {
+        "mean": 100.0,
+        "sd": 0.0,
+        "ci95": 0.0,
+        "n": 5,
+        "underpowered": false
+      },
+      "rtt_ms_during_fault": {
+        "mean": null,
+        "ci95": null,
+        "n": 0,
+        "underpowered": true
+      },
+      "verification_outcomes": {
+        "SUCCESS": 4,
+        "PARTIAL": 1,
+        "FAILED": 0
+      },
+      "rl_fallbacks": 3
+    },
+    "E6/P2_ML_RL/high_latency": {
+      "trials_run": 5,
+      "trials_usable": 5,
+      "trials_errored": 0,
+      "errors": [],
+      "detection_rate": 0.2,
+      "detection_rate_in_fault": 0.2,
+      "detections_after_fault_ended": 0,
+      "detection_latency_in_fault_s": {
+        "mean": 82.90454292297363,
+        "ci95": null,
+        "n": 1,
+        "underpowered": true
+      },
+      "recovery_rate": 0.2,
+      "detection_latency_s": {
+        "mean": 82.90454292297363,
+        "ci95": null,
+        "n": 1,
+        "underpowered": true
+      },
+      "recovery_time_s": {
+        "mean": 90.93954300880432,
+        "ci95": null,
+        "n": 1,
+        "underpowered": true
+      },
+      "reroute_count": {
+        "mean": 0.4,
+        "sd": 0.8944271909999159,
+        "ci95": 0.7839999999999999,
+        "n": 5,
+        "underpowered": false
+      },
+      "throughput_retained_frac": {
+        "mean": 0.9791861395848519,
+        "sd": 0.0039652523395873425,
+        "ci95": 0.003475696921468892,
+        "n": 5,
+        "underpowered": false
+      },
+      "loss_percent_during_fault": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "ci95": 0.0,
+        "n": 5,
+        "underpowered": false
+      },
+      "rtt_ms_during_fault": {
+        "mean": 117.7028,
+        "sd": 2.4839095595451965,
+        "ci95": 2.1772427250410114,
+        "n": 5,
+        "underpowered": false
+      },
+      "verification_outcomes": {
+        "SUCCESS": 1,
+        "PARTIAL": 0,
+        "FAILED": 0
+      },
+      "rl_fallbacks": 1
     }
   }
 }

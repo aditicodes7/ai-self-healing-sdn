@@ -189,10 +189,17 @@ class RemediationManager:
         if not raw_candidates:
             return None, None, "no_viable_candidate_for_rl"
 
+        # allow_hold=False: this call only happens once the healing loop
+        # has opened an incident and persistence is satisfied, so "do not
+        # reroute" contradicts the decision that triggered it. Previously
+        # the policy could answer 0 here and we would discard the answer
+        # and use the heuristic -- 7 of 11 times in E6 -- which meant the
+        # learned policy was credited with decisions the formula made.
         decision = self.rl_client.select_route(
             flow_ctx.src_dpid, flow_ctx.dst_dpid, raw_candidates, link_metrics,
             degradation_probs, degraded_link_id, current_path,
             time_since_last_reroute_s, global_mean_utilization, global_max_utilization,
+            allow_hold=False,
         )
         if decision is None:
             return None, None, "rl_service_unavailable"
