@@ -686,6 +686,52 @@
       </p>`;
   }
 
+  const FAULT_LABEL = {
+    link_failure: "link failure (cable cut)",
+    gradual_degradation: "gradual degradation",
+    congestion: "congestion",
+    high_latency: "high latency",
+    packet_loss: "packet loss",
+    rising_errors: "rising errors",
+  };
+
+  function e2Table(byFault) {
+    // Ordered by detection rate, so the fault types the system cannot
+    // see sit at the bottom of the table where they are read as a
+    // result, rather than scattered through it where they are skimmed.
+    const cells = Object.entries(byFault || {})
+      .filter(([k]) => k.startsWith("E2/P2_ML_RL/"))
+      .map(([k, s]) => [k.split("/")[2], s])
+      .sort((a, b) => (b[1].detection_rate || 0) - (a[1].detection_rate || 0));
+    if (!cells.length) return null;
+
+    const rows = cells.map(([fault, s]) => {
+      const rate = s.detection_rate || 0;
+      const rec = s.recovery_time_s || {};
+      const detected = Math.round(rate * s.trials_usable);
+      const cls = rate === 0 ? "row-blind" : rate >= 1 ? "row-full" : "";
+      return `<tr class="${cls}">
+        <td>${FAULT_LABEL[fault] || fault}</td>
+        <td class="num">${pct(rate)}</td>
+        <td class="num">${detected} of ${s.trials_usable}</td>
+        <td class="num">${rec.mean != null ? rec.mean.toFixed(0) + "s" : "never repaired"}</td>
+      </tr>`;
+    });
+
+    return `<table class="result-table">
+      <thead><tr><th>fault type</th><th>detected</th><th>trials</th><th>repair time</th></tr></thead>
+      <tbody>${rows.join("")}</tbody></table>
+      <p class="result-note">
+        Static routing detected 0 of 29 across every fault type, as a system that
+        never reacts should. The two zero rows are a predicted result, not a
+        surprise: the emulated switches cannot observe packet loss or corruption
+        on virtual links, so those inputs are identically zero and the model has
+        nothing to learn from. This experiment exists to measure that rather than
+        assert it. A single pooled figure for all six faults would average 100%
+        together with 0% and describe neither, so it is not reported.
+      </p>`;
+  }
+
   function mlCard(ml) {
     const best = ml.chosen_model;
     const m = (ml.models || {})[best] || {};
@@ -799,6 +845,13 @@
         cards.push(card("Experiment E1 — the full system vs three baselines",
           "Each row adds one mechanism to the row above it, so a difference is attributable.",
           table));
+      }
+    }
+    if (a.experiments && a.experiments.by_fault) {
+      const t2 = e2Table(a.experiments.by_fault);
+      if (t2) {
+        cards.push(card("Experiment E2 — coverage across six fault types",
+          "Where the system works, and where it does not.", t2));
       }
     }
     if (a.ml) cards.push(card("The prediction model", "Predicts a link is about to degrade.", mlCard(a.ml)));
