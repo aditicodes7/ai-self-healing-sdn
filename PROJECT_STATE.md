@@ -851,11 +851,36 @@ whenever main_app.py first wires RemediationManager in for real).
 
 ## Experiment status
 
-Not started (Phase 22).
+Phase 22 in progress. Valid batches are selected explicitly by run id;
+superseded ones stay in `results/experiments.db` and are listed with
+their reason in `results/invalidated_runs.json`, which `analyze.py`
+applies by default.
+
+| | status | result |
+|---|---|---|
+| E1 | measured, ids 1-23 | B2 (reactive threshold) beats the full system on this fault. Reported, not hidden. |
+| E2 | measured, ids 123-182 | Per fault: link failure 100%, gradual degradation 100%, congestion 80%, high latency 60%, packet loss 20%, rising errors 0%. Static routing 0/29. |
+| E3 | measured, ids 183-202 | **Falsifies the lead-time claim.** P2 is not earlier than B2; it detects MORE (70% vs 40% in-fault). See docs/limitations.md. |
+| E4 | not started | 30 trials |
+| E5 | not started | 5 trials |
+| E6 | RUNNING (started 2026-09-11 13:19) | 30 trials; the remaining justification for the RL half |
+| E7 | not started | 10 trials |
+| E8 | not started | 5 trials |
+
+Three code defects were found BY these experiments, not by development:
+the predictor's structural blindness to a hard link failure (fixed with
+an LLDP link-down detection path, 0/5 -> 5/5), an unbounded iperf3 that
+could take a measurement 18 minutes after its window, and a detection
+metric that counted reactions to a fault's REMOVAL as detections.
 
 ## Documentation status
 
 `docs/decisions.md` and `docs/limitations.md` initialized and current.
+`docs/limitations.md` now also carries the four-instance record of this
+project's one recurring root cause -- a measurement taken under
+conditions that did not match the conditions being claimed -- which
+belongs in the paper's threats-to-validity section as a pattern rather
+than as four separate mishaps.
 `docs/architecture.md`, `technical_paper.md`, `project_report.md`,
 `presentation.md`, `demo_guide.md` not yet started (later phases).
 
