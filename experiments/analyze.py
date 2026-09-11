@@ -69,11 +69,38 @@ def _throughput_ratio(rec: dict) -> float | None:
     return during / base
 
 
+# How long the injected fault is actually present, measured from the
+# `fault_start` that detection latency is relative to: the injector ramps
+# to full intensity over DEFAULT_RAMP_IN_S and then holds for
+# FAULT_DURATION_S before recovering. Confirmed against the injector's own
+# ground-truth log (results/raw/experiments/*/faults.jsonl): fault_end is
+# exactly 150.0-150.1s after full intensity is applied.
+FAULT_WINDOW_S = 12.0 + 150.0
+
+
+def _detected_in_fault(rec: dict) -> bool:
+    """True if the detection landed while the fault was still present.
+
+    A "detection" logged after the fault has been removed is not a
+    detection of the fault -- it is a reaction to the recovery transient,
+    when bandwidth and delay snap back and queues flush. Counting those
+    as successes inflates a reactive system's detection rate and, worse,
+    inflates its mean detection latency with values that are really just
+    "the length of the fault window". In E3 six of B2's ten detections
+    landed 4-6s after fault_end, clustered at 166-168s against a 162s
+    window -- far too tight to be anything but the removal itself.
+    """
+    lat = rec.get("detection_latency_s")
+    return lat is not None and lat <= FAULT_WINDOW_S
+
+
 def summarize(records: list[dict]) -> dict:
     usable = [r for r in records if not r.get("error")]
     errored = [r for r in records if r.get("error")]
 
     detected = [r for r in usable if r.get("detected")]
+    in_fault = [r for r in detected if _detected_in_fault(r)]
+    post_fault = [r for r in detected if not _detected_in_fault(r)]
     recovered = [r for r in usable if r.get("recovery_time_s") is not None]
 
     return {
@@ -83,6 +110,14 @@ def summarize(records: list[dict]) -> dict:
         "errors": [r.get("error") for r in errored],
         # Rate over ALL usable trials -- the misses are in the denominator.
         "detection_rate": (len(detected) / len(usable)) if usable else None,
+        # The rate that should be quoted. `detection_rate` above counts
+        # any incident opened during the trial, including ones opened
+        # after the fault was already gone.
+        "detection_rate_in_fault": (len(in_fault) / len(usable)) if usable else None,
+        "detections_after_fault_ended": len(post_fault),
+        "detection_latency_in_fault_s": mean_ci95(
+            [r["detection_latency_s"] for r in in_fault]
+        ),
         "recovery_rate": (len(recovered) / len(usable)) if usable else None,
         "detection_latency_s": mean_ci95([r["detection_latency_s"] for r in detected]),
         "recovery_time_s": mean_ci95([r["recovery_time_s"] for r in recovered]),
@@ -232,16 +267,24 @@ def main() -> int:
     (out_dir / "experiment_results.json").write_text(json.dumps(output, indent=2))
 
     print(f"{len(rows)} trials recorded\n")
-    header = (f"{'experiment / system':<34}{'det%':>7}{'rec%':>7}{'det_s':>13}"
+    header = (f"{'experiment / system':<34}{'det%':>7}{'late':>6}{'rec%':>7}{'det_s':>13}"
               f"{'recov_s':>13}{'reroutes':>12}{'thr_kept':>12}")
     print(header)
     print("-" * len(header))
     for key, s in output["results"].items():
-        det = f"{s['detection_rate']*100:.0f}%" if s["detection_rate"] is not None else "n/a"
+        # det% and det_s are the IN-FAULT figures. A detection logged
+        # after the fault was removed is counted under `late` instead of
+        # being folded into either.
+        rate = s["detection_rate_in_fault"]
+        det = f"{rate*100:.0f}%" if rate is not None else "n/a"
+        late = str(s["detections_after_fault_ended"] or "")
         rec = f"{s['recovery_rate']*100:.0f}%" if s["recovery_rate"] is not None else "n/a"
-        print(f"{key:<34}{det:>7}{rec:>7}"
-              f"{_fmt(s['detection_latency_s']):>13}{_fmt(s['recovery_time_s']):>13}"
+        print(f"{key:<34}{det:>7}{late:>6}{rec:>7}"
+              f"{_fmt(s['detection_latency_in_fault_s']):>13}{_fmt(s['recovery_time_s']):>13}"
               f"{_fmt(s['reroute_count']):>12}{_fmt(s['throughput_retained_frac'], 100, '%'):>12}")
+    print("\n  det% / det_s count only detections made while the fault was still")
+    print("  present. 'late' counts incidents opened after the fault had been")
+    print("  removed -- reactions to the recovery transient, not detections.")
 
     # Per-fault detail, printed only where an experiment actually spans
     # more than one fault type -- for a single-fault experiment it would
@@ -260,9 +303,10 @@ def main() -> int:
             if not key.startswith(exp_id + "/"):
                 continue
             _, system, fault = key.split("/")
-            det = f"{s['detection_rate']*100:.0f}%" if s["detection_rate"] is not None else "n/a"
+            rate = s["detection_rate_in_fault"]
+            det = f"{rate*100:.0f}%" if rate is not None else "n/a"
             print(f"{system + ' / ' + fault:<44}{det:>7}{s['trials_usable']:>4}"
-                  f"{_fmt(s['detection_latency_s']):>13}{_fmt(s['recovery_time_s']):>13}"
+                  f"{_fmt(s['detection_latency_in_fault_s']):>13}{_fmt(s['recovery_time_s']):>13}"
                   f"{_fmt(s['reroute_count']):>12}")
     print()
 

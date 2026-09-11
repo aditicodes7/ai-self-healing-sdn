@@ -282,6 +282,100 @@ def figure_e2(by_fault: dict, out_dir: Path) -> bool:
     return True
 
 
+def figure_e3(by_fault: dict, out_dir: Path) -> bool:
+    """E3: does prediction actually detect earlier than a threshold?
+
+    Two panels because the answer has two halves that point in opposite
+    directions, and showing only one of them would misrepresent the
+    result. Left: how often each system detects the fault while it is
+    still happening. Right: how quickly, when it does.
+
+    The reactive baseline's late "detections" are drawn as a separate
+    hatched marker rather than being dropped silently or folded into its
+    rate -- they are real events the system logged, they are just not
+    detections of the fault.
+    """
+    faults = ["gradual_degradation", "congestion"]
+    systems = ["B2_RULE_BASED", "P2_ML_RL"]
+    cells = {(s, f): by_fault.get(f"E3/{s}/{f}") for s in systems for f in faults}
+    if not any(cells.values()):
+        return False
+
+    label = {"B2_RULE_BASED": "B2  reactive\nthresholds", "P2_ML_RL": "P2  ML + RL\n(full system)"}
+    colors = {"B2_RULE_BASED": ACCENT_2, "P2_ML_RL": ACCENT}
+
+    fig, axes = plt.subplots(1, 2, figsize=(11.5, 4.4), facecolor="white")
+    height, gap = 0.34, 0.42
+    ypos = {f: i for i, f in enumerate(reversed(faults))}
+
+    ax = axes[0]
+    for f in faults:
+        for k, s in enumerate(systems):
+            cell = cells[(s, f)]
+            if not cell:
+                continue
+            y = ypos[f] + (gap / 2 if k == 0 else -gap / 2)
+            rate = (cell["detection_rate_in_fault"] or 0.0) * 100
+            n = cell["trials_usable"]
+            ax.barh(y, rate, height=height, color=colors[s], edgecolor=colors[s], linewidth=0.8)
+            late = cell["detections_after_fault_ended"]
+            note = f"  {rate:.0f}%  ({round(rate / 100 * n)}/{n})"
+            if late:
+                note += f"  + {late} after the fault ended"
+            ax.text(rate + 1.5, y, note, va="center", ha="left", fontsize=8.5,
+                    color=INK if not late else ACCENT_2)
+    ax.set_xlim(0, 100)
+    ax.set_yticks([ypos[f] for f in faults])
+    ax.set_yticklabels([FAULT_LABEL.get(f, f) for f in faults], fontsize=8.5, color=INK)
+    ax.set_xlabel("faults detected while still happening (%)", fontsize=9, color=INK_MUTED)
+    ax.set_title("How often the fault is caught", fontsize=10.5, color=INK, loc="left", pad=8)
+    _style(ax)
+
+    ax = axes[1]
+    for f in faults:
+        for k, s in enumerate(systems):
+            cell = cells[(s, f)]
+            if not cell:
+                continue
+            entry = cell["detection_latency_in_fault_s"] or {}
+            if entry.get("mean") is None:
+                continue
+            y = ypos[f] + (gap / 2 if k == 0 else -gap / 2)
+            n = entry["n"]
+            under = n < MIN_SAMPLES_FOR_CONFIDENCE
+            ax.barh(y, entry["mean"], height=height, color=colors[s],
+                    alpha=0.45 if under else 1.0, hatch="//" if under else None,
+                    edgecolor=colors[s], linewidth=0.8)
+            if entry.get("ci95"):
+                ax.errorbar(entry["mean"], y, xerr=entry["ci95"], fmt="none",
+                            ecolor=INK_MUTED, elinewidth=1.2, capsize=3)
+            note = f"{entry['mean']:.0f}s" + (f"  (n={n}, provisional)" if under else "")
+            ax.text(entry["mean"] + (entry.get("ci95") or 0) + 1, y, "  " + note,
+                    va="center", ha="left", fontsize=8.5, color=INK)
+    ax.set_yticks([ypos[f] for f in faults])
+    ax.set_yticklabels([])
+    ax.set_xlabel("time from fault onset to detection (s)  \u2014  lower is earlier",
+                  fontsize=9, color=INK_MUTED)
+    ax.set_title("How early, when it is caught", fontsize=10.5, color=INK, loc="left", pad=8)
+    _style(ax)
+    ax.margins(x=0.34)
+
+    # Figure-level, in the title band: every in-axes corner is occupied by
+    # a value label, and a legend that sits on top of one costs more than
+    # it explains.
+    handles = [Patch(facecolor=colors[s], edgecolor=colors[s], label=label[s].replace("\n", " "))
+               for s in systems]
+    fig.legend(handles=handles, loc="upper right", bbox_to_anchor=(0.995, 1.015),
+               ncol=2, frameon=False, fontsize=8.5)
+
+    fig.suptitle("E3  Prediction lead time  \u2014  the predictive system detects MORE, not EARLIER.",
+                 fontsize=11, color=INK, x=0.012, ha="left", y=0.99)
+    fig.tight_layout(rect=(0, 0, 1, 0.93))
+    fig.savefig(out_dir / "e3_lead_time.png", dpi=200, facecolor="white")
+    plt.close(fig)
+    return True
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -307,6 +401,8 @@ def main() -> int:
         drawn.append("e1_ladder.png")
     if figure_e2(by_fault, out_dir):
         drawn.append("e2_by_fault.png")
+    if figure_e3(by_fault, out_dir):
+        drawn.append("e3_lead_time.png")
 
     if not drawn:
         print("no experiment had enough recorded trials to draw yet")

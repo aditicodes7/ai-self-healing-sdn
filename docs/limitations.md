@@ -333,6 +333,63 @@ sim-to-real gap on top of the queueing-delay one documented above, and
 should be stated in the technical paper's RL methodology section
 alongside it.
 
+## E3 FALSIFIES the lead-time claim, and exposed an inflated detection metric
+
+E3 was written to test the project's central claim -- that prediction
+detects a fault BEFORE a threshold-based system can -- and its own
+definition states that "a non-positive gap would falsify it and must be
+reported as such". The gap is non-positive. Reported here as such.
+
+**First, a measurement bug the experiment surfaced.** B2's raw numbers
+looked excellent: 10/10 detection. But six of those ten detections
+carried latencies of 166.2-168.6s, clustered within 2.4s of each other,
+against a fault window of 162s (12s ramp + 150s hold, confirmed against
+the injector's own ground truth in
+`results/raw/experiments/*/faults.jsonl`, which records fault_end at
+150.0-150.1s after full intensity). Those "detections" landed 4-6s AFTER
+the fault had been removed -- one telemetry cycle later. They are not
+detections of the fault; they are reactions to the recovery transient,
+when bandwidth and delay snap back and queues flush.
+
+Counting them was inflating a reactive system's detection rate AND its
+mean latency, the latter with values that are really just "the length of
+the fault window". `analyze.py` now classifies every detection against
+the fault window and reports `detection_rate_in_fault` and
+`detection_latency_in_fault_s`, with late detections counted separately
+in a `late` column rather than dropped silently -- they are real events
+the system logged, just not detections. E1 and E2 were re-checked under
+the same rule and have **zero** late detections, so only E3's numbers
+move.
+
+**The result, on genuine in-fault detections:**
+
+| | detects | when it does | late |
+|---|---:|---:|---:|
+| B2 reactive, gradual degradation | 20% (1/5) | 49.8s (n=1) | 4 |
+| P2 full system, gradual degradation | **80%** (4/5) | 83.1s | 0 |
+| B2 reactive, congestion | 60% (3/5) | 63.0s | 2 |
+| P2 full system, congestion | 60% (3/5) | 59.2s | 0 |
+
+P2 is **not** earlier. On congestion the two are statistically
+indistinguishable (59.2s vs 63.0s, overlapping intervals). On gradual
+degradation P2 is 33s *slower* than B2's single in-fault detection --
+and that comparison rests on n=1, so it is weak in both directions.
+
+**What P2 is better at is coverage: 70% vs 40% overall**, and every one
+of its detections landed while the fault was still present, where 6 of
+B2's 10 did not. That is a real and defensible advantage -- a system
+that catches 7 of 10 faults during the fault beats one that catches 4 and
+then twitches at the recovery -- but it is a different claim from the one
+E3 was written to test, and substituting it silently would be exactly the
+kind of retrofitted hypothesis this file exists to prevent.
+
+**Consequence for the paper.** The "predictive means earlier" framing is
+not supported by this evidence and must not be used. The defensible
+claim is coverage and precision of detection, not lead time. E6 (RL vs
+heuristic path selection) now carries more weight as the justification
+for the learned components, since E3 has removed one of the two pillars
+the project was resting on.
+
 ## Host sleep suspends the VM, and the clock step afterwards is the real hazard
 
 This machine is configured to sleep after 1 minute idle, and had slept
