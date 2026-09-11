@@ -333,6 +333,67 @@ sim-to-real gap on top of the queueing-delay one documented above, and
 should be stated in the technical paper's RL methodology section
 alongside it.
 
+## E6 result: the learned policy is WORSE than the hand-tuned formula
+
+With the hold action masked (previous entry), the RL made all 9 of P2's
+selections -- zero fallbacks, against 7 of 11 before. E6 is now a valid
+test of its claim, and the claim does not survive.
+
+| | chose 10 Mbit path | chose 5 Mbit path | throughput after / before |
+|---|---:|---:|---|
+| P1 hand-tuned formula | 8 of 9 | 1 | 1.00-2.63, **never below 1.0** |
+| P2 learned policy | 1 of 9 | 5 | 0.54-1.93, **7 of 15 below 1.0** |
+
+Aggregate throughput retained: P1 **97.5 +/- 0.4%**, P2 **89.8 +/- 10.4%**
+-- a worse mean and 26x the variance. Recovery time is indistinguishable
+(99.8 +/- 33.7s vs 95.8 +/- 45.5s), so the difference is in path choice,
+which is exactly what E6 isolates.
+
+Per-trial, 6 of the policy's 9 reroutes moved traffic to a
+LOWER-capacity path than it was already on; the formula did that once.
+Three of the policy's moves made throughput worse by 25-46%. Rerouting
+onto a worse path is not a repair.
+
+**This is not an unfair comparison, and it was checked.** Both selectors
+receive identical inputs: `compute_path_cost` and the RL state both see
+per-link utilization, latency, loss and hop count, and NEITHER is given
+link capacity. Capacity enters both indirectly and identically, through
+utilization -- the same traffic on a 5 Mbit link reads a higher ratio
+than on a 10 Mbit one. The information needed to avoid the bad path was
+present in the policy's observation; it did not use it.
+
+**Most likely cause, stated as a hypothesis because this experiment does
+not isolate it.** The policy is trained in the numpy simulator, whose
+latency model is already documented above as overestimating real delay
+-- 12% error at moderate load but **234% at 80% utilization**. A policy
+trained against a distorted latency signal and then deployed on
+Mininet is optimising a cost surface it will not meet. The hand-tuned
+weights, by contrast, were set against the real system
+(utilization 1.0, latency 1.0, loss 2.0, hop_count 0.25 -- note how
+heavily hop count is discounted, which is precisely the term the policy
+appears to over-weight). Confirming this would need a retrained policy
+against a corrected latency model, which is future work, not a result.
+
+**Consequence for the paper. The RL must not be presented as an
+improvement.** Two of the project's headline claims are now falsified by
+its own experiments: E3 removed "prediction detects earlier", E6 removes
+"the learned policy routes better". What survives is real and worth
+stating plainly:
+
+* a closed detection-to-verified-repair loop that works end to end;
+* ML-based detection with measured per-fault coverage, including the two
+  fault types it cannot see and why;
+* a second detection path for hard link failures that took that fault
+  from 0/5 to 5/5;
+* and a measurement methodology that caught five separate instances of
+  results being produced under conditions that did not match what was
+  claimed -- including this one, where the experiment ran perfectly and
+  measured the wrong thing.
+
+A project that reports two falsified hypotheses with the evidence that
+falsified them is more defensible than one that reports four successes
+and cannot show its working.
+
 ## E6, attempt 1: the RL was credited for decisions the heuristic made
 
 E6 exists to justify the RL half of the project: P1 and P2 are identical
