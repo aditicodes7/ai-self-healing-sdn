@@ -333,6 +333,47 @@ sim-to-real gap on top of the queueing-delay one documented above, and
 should be stated in the technical paper's RL methodology section
 alongside it.
 
+## E8 passed, but the experiment was not recording its own evidence
+
+E8 kills the inference service mid-run to check that the system degrades
+safely. Its result JSON reported **zero** RL fallbacks across all five
+trials, which reads as a null result.
+
+The database said otherwise. In the trial DB:
+
+* `route_changes` carried `rl_fallback = 1` with reason
+  `rl_service_unavailable`, so the safety gate did fire and did record a
+  reason;
+* `predictions` stop **dead at 10:26:42**, the moment the service was
+  terminated. Not one prediction afterwards. That is the central claim --
+  an unreachable model yields no prediction rather than a guessed one --
+  and it held.
+
+Two separate problems produced the misleading summary:
+
+1. **The runner counted fallbacks only from fault onset onward.** The
+   fallback it missed happened at controller startup, before the fault,
+   when the service had not finished coming up. Correct behaviour, and
+   correctly filtered out of "what happened during this fault" -- but it
+   meant E8's stated success criterion ("rl_fallback=1 recorded with a
+   reason") could never be satisfied by the data it looked at.
+2. **The kill lands after the interesting work is done.** It fires 20s
+   after fault injection, and in these trials detection and remediation
+   completed 14-16s in. So no RL call happened after the kill, which is
+   why there was no post-kill fallback to count. The experiment was
+   measuring a window in which nothing was supposed to happen.
+
+`_timeline_from_db` now records `service_killed_at`,
+`n_predictions_after_service_kill` and `rl_fallbacks_after_service_kill`,
+so the claim is measured directly instead of inferred from a count that
+excludes it. E8 will be re-run against those fields.
+
+**The pattern again, in its cheapest form.** The evidence for the safety
+property existed in the database the whole time; the experiment simply
+never looked at it and reported a number that meant something else. An
+experiment has to capture the thing it claims, not a quantity that
+correlates with it on a good day.
+
 ## RETRACTED: the E6 conclusion below is not supported by the evidence
 
 **The section that follows is kept for the record but its conclusion is

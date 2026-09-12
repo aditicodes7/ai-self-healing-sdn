@@ -159,7 +159,9 @@ def _measure_flow(net, duration_s: int, port: int) -> dict:
     return result
 
 
-def _timeline_from_db(db_path: Path, fault_start: float) -> dict:
+def _timeline_from_db(
+    db_path: Path, fault_start: float, service_killed_at: float | None = None
+) -> dict:
     """What the controller actually did, read back from its own tables."""
     with Database(db_path) as db:
         incident = db.query_one(
@@ -181,6 +183,26 @@ def _timeline_from_db(db_path: Path, fault_start: float) -> dict:
             "SELECT COUNT(*) c FROM predictions WHERE timestamp >= ?", (fault_start,)
         )["c"]
 
+        # E8's claim is that an unreachable model produces NO prediction
+        # rather than a guessed one, and the only way to show that is to
+        # count what happened after the service died. Without these, E8
+        # reported "0 fallbacks" and looked like a null result, while the
+        # database showed the safety gate working correctly -- the
+        # evidence existed and the experiment simply never looked at it.
+        n_predictions_after_kill = None
+        fallbacks_after_kill = []
+        if service_killed_at is not None:
+            n_predictions_after_kill = db.query_one(
+                "SELECT COUNT(*) c FROM predictions WHERE timestamp >= ?", (service_killed_at,)
+            )["c"]
+            fallbacks_after_kill = [
+                r["rl_fallback_reason"]
+                for r in db.query(
+                    "SELECT * FROM route_changes WHERE rl_fallback = 1 AND timestamp >= ? "
+                    "ORDER BY timestamp", (service_killed_at,)
+                )
+            ]
+
     detected_at = incident["opened_at"] if incident else None
     verified_at = verification["timestamp"] if verification else None
     return {
@@ -195,6 +217,9 @@ def _timeline_from_db(db_path: Path, fault_start: float) -> dict:
         "reroute_count": len(reroutes),
         "selectors": [r["selector"] for r in reroutes],
         "rl_fallbacks": [r["rl_fallback_reason"] for r in reroutes if r["rl_fallback"]],
+        "service_killed_at": service_killed_at,
+        "n_predictions_after_service_kill": n_predictions_after_kill,
+        "rl_fallbacks_after_service_kill": fallbacks_after_kill,
         "final_path": reroutes[-1]["new_path"] if reroutes else None,
         "n_predictions_during_fault": n_predictions,
     }
@@ -276,10 +301,12 @@ def run_trial(experiment_id: str, system: str, fault_type: str, seed: int,
         fault_thread.start()
         log(f"  injected {fault_type} on {sw_a}-{sw_b}")
 
+        service_killed_at = None
         if kill_service_mid_run and service.poll() is None:
             time.sleep(20)
             log("  killing ml_rl_service mid-run (E8 safety-gate test)")
             service.terminate()
+            service_killed_at = time.time()
 
         time.sleep(40)
         during = _measure_flow(net, IPERF_SAMPLE_S, cfg.traffic.iperf3_port)
@@ -302,7 +329,7 @@ def run_trial(experiment_id: str, system: str, fault_type: str, seed: int,
 
         after = _measure_flow(net, IPERF_SAMPLE_S, cfg.traffic.iperf3_port)
 
-        timeline = _timeline_from_db(db_path, fault_start)
+        timeline = _timeline_from_db(db_path, fault_start, service_killed_at)
         log(f"  timeline: detected={timeline['detected']} "
             f"recovery_time_s={timeline['recovery_time_s']} "
             f"reroutes={timeline['reroute_count']}")
