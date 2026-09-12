@@ -134,6 +134,33 @@ def summarize(records: list[dict]) -> dict:
             for outcome in ("SUCCESS", "PARTIAL", "FAILED")
         },
         "rl_fallbacks": sum(len(r.get("rl_fallbacks") or []) for r in usable),
+        # E8's evidence. Present only for trials where the inference
+        # service was actually killed, so it is None everywhere else
+        # rather than a zero that would read as "nothing happened".
+        "safety": _safety_summary(usable),
+    }
+
+
+def _safety_summary(usable: list[dict]) -> dict | None:
+    """What happened after the inference service was killed.
+
+    The claim is that an unreachable model yields NO prediction rather
+    than a guessed one, so the number that matters is predictions after
+    the kill, per trial. Reported as a list, not a mean: a single trial
+    fabricating one prediction would be a failure, and a mean of 0.2
+    would look like rounding error.
+    """
+    killed = [r for r in usable if r.get("service_killed_at")]
+    if not killed:
+        return None
+    return {
+        "trials_with_service_killed": len(killed),
+        "predictions_after_kill_per_trial": [
+            r.get("n_predictions_after_service_kill") for r in killed
+        ],
+        "fallbacks_after_kill": sum(
+            len(r.get("rl_fallbacks_after_service_kill") or []) for r in killed
+        ),
     }
 
 

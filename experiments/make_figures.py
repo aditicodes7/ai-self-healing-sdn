@@ -376,6 +376,235 @@ def figure_e3(by_fault: dict, out_dir: Path) -> bool:
     return True
 
 
+def _bars(ax, labels, values, errors, notes, colors, xlabel, title):
+    """One horizontal bar per arm, with the value written past the bar so
+    a reader never has to measure against the axis."""
+    ypos = list(range(len(labels)))[::-1]
+    for y, lab, val, err, note, col in zip(ypos, labels, values, errors, notes, colors):
+        if val is None:
+            ax.text(0, y, "  no data", va="center", ha="left", fontsize=8,
+                    color=INK_MUTED, style="italic")
+            continue
+        ax.barh(y, val, height=0.5, color=col, edgecolor=col, linewidth=0.8)
+        if err:
+            ax.errorbar(val, y, xerr=err, fmt="none", ecolor=INK_MUTED,
+                        elinewidth=1.2, capsize=3)
+        ax.text(val + (err or 0), y, "  " + note, va="center", ha="left",
+                fontsize=8.5, color=INK)
+    ax.set_yticks(ypos)
+    ax.set_yticklabels(labels, fontsize=8.5, color=INK)
+    ax.set_xlabel(xlabel, fontsize=9, color=INK_MUTED)
+    ax.set_title(title, fontsize=10.5, color=INK, loc="left", pad=8)
+    _style(ax)
+    ax.margins(x=0.30)
+
+
+def figure_e4(results: dict, out_dir: Path) -> bool:
+    """E4: does the system flap? Reroutes per run is the primary metric.
+
+    Late detections are annotated rather than dropped: an incident opened
+    after the fault was already gone still installed flow rules, so it
+    belongs in a chart about how much the system churns.
+    """
+    order = ["E4/B2_RULE_BASED", "E4/P1_ML_HEURISTIC", "E4/P2_ML_RL"]
+    cells = [(k, results.get(k)) for k in order]
+    if not any(v for _, v in cells):
+        return False
+    labels, values, errors, notes, colors = [], [], [], [], []
+    for k, s in cells:
+        if not s:
+            continue
+        rr = s["reroute_count"]
+        labels.append(SYSTEM_LABEL.get(k.split("/")[1], k))
+        values.append(rr["mean"]); errors.append(rr.get("ci95"))
+        late = s["detections_after_fault_ended"]
+        note = f"{rr['mean']:.2f} per run"
+        if late:
+            note += f"   ({late} reroute{'s' if late > 1 else ''} after the fault had gone)"
+        notes.append(note)
+        colors.append(ACCENT_2 if late else ACCENT)
+
+    fig, ax = plt.subplots(figsize=(9.2, 3.2), facecolor="white")
+    _bars(ax, labels, values, errors, notes, colors,
+          "reroutes per run  \u2014  lower is calmer", "")
+    fig.suptitle("E4  Route stability  \u2014  the reactive baseline churns 3x more than the full system.",
+                 fontsize=11, color=INK, x=0.012, ha="left", y=0.985)
+    fig.tight_layout(rect=(0, 0, 1, 0.90))
+    fig.savefig(out_dir / "e4_stability.png", dpi=200, facecolor="white")
+    plt.close(fig)
+    return True
+
+
+def figure_e5(results: dict, out_dir: Path) -> bool:
+    """E5: the ablation. Both halves of the trade, side by side.
+
+    Reporting only reroutes would overstate the gates; reporting only
+    detection would overstate their cost. The two panels are the result.
+    """
+    on, off = results.get("E5/P2_ML_RL"), results.get("E5/P2_ML_RL_nogates")
+    if not on or not off:
+        return False
+    labels = ["gates ON\n(persistence + hysteresis)", "gates OFF\n(ablated)"]
+    colors = [ACCENT, ACCENT_2]
+
+    fig, axes = plt.subplots(1, 2, figsize=(11, 3.4), facecolor="white")
+    _bars(axes[0], labels,
+          [on["reroute_count"]["mean"], off["reroute_count"]["mean"]],
+          [on["reroute_count"].get("ci95"), off["reroute_count"].get("ci95")],
+          [f"{on['reroute_count']['mean']:.1f}", f"{off['reroute_count']['mean']:.1f}  \u2014  7x more"],
+          colors, "reroutes per run", "What the gates prevent")
+    _bars(axes[1], labels,
+          [on["detection_rate_in_fault"] * 100, off["detection_rate_in_fault"] * 100],
+          [None, None],
+          [f"{on['detection_rate_in_fault']*100:.0f}%  ({round(on['detection_rate_in_fault']*on['trials_usable'])}/{on['trials_usable']})",
+           f"{off['detection_rate_in_fault']*100:.0f}%  ({round(off['detection_rate_in_fault']*off['trials_usable'])}/{off['trials_usable']})"],
+          colors, "faults detected (%)", "What they cost")
+    axes[1].set_xlim(0, 100)
+    axes[1].set_yticklabels([])
+
+    fig.suptitle("E5  Ablation  \u2014  removing the gates catches every fault, and thrashes.",
+                 fontsize=11, color=INK, x=0.012, ha="left", y=0.985)
+    fig.tight_layout(rect=(0, 0, 1, 0.88))
+    fig.savefig(out_dir / "e5_ablation.png", dpi=200, facecolor="white")
+    plt.close(fig)
+    return True
+
+
+def figure_e6(out_dir: Path) -> bool:
+    """E6: decision quality, from the recorded inputs.
+
+    P1 agreeing with the formula on every decision is the control for the
+    method -- P1 IS the formula, so anything else would mean the replay
+    was misreading the record. It is drawn, not just asserted.
+    """
+    path = REPO_ROOT / "results" / "tables" / "e6_decision_quality.json"
+    if not path.exists():
+        return False
+    arms = json.loads(path.read_text())["arms"]
+    p1, p2 = arms.get("P1_ML_HEURISTIC"), arms.get("P2_ML_RL")
+    if not p1 or not p2:
+        return False
+
+    fig, ax = plt.subplots(figsize=(9.6, 3.0), facecolor="white")
+    rows = [("P1  hand-tuned formula", p1, 0), ("P2  learned policy", p2, 1)]
+    for label, r, y in rows:
+        y = 1 - y
+        total = r["decisions"] or 1
+        segs = [("agreed with formula", r["agreed_with_formula"], GRID),
+                ("chose a WIDER path", r["chose_wider"], ACCENT),
+                ("chose a narrower path", r["chose_narrower"], ACCENT_2),
+                ("same capacity, different path", r["chose_same_capacity"], INK_MUTED)]
+        left = 0
+        for name, n, col in segs:
+            if not n:
+                continue
+            ax.barh(y, n, left=left, height=0.5, color=col, edgecolor="white", linewidth=1.2)
+            if n / total > 0.07:
+                ax.text(left + n / 2, y, str(n), va="center", ha="center", fontsize=9,
+                        color="white" if col != GRID else INK)
+            left += n
+        ax.text(left + 0.6, y, f"  {r['decisions']} decisions", va="center", ha="left",
+                fontsize=8.5, color=INK_MUTED)
+    ax.set_yticks([1, 0]); ax.set_yticklabels([rows[0][0], rows[1][0]], fontsize=9, color=INK)
+    ax.set_xlabel("routing decisions, replayed against the inputs each selector was shown",
+                  fontsize=9, color=INK_MUTED)
+    _style(ax); ax.margins(x=0.16)
+    handles = [Patch(facecolor=c, edgecolor=c, label=n) for n, c in
+               (("agreed with formula", GRID), ("chose a WIDER path", ACCENT),
+                ("chose a narrower path", ACCENT_2), ("same capacity", INK_MUTED))]
+    # Below the plot, not beside the title: the title is a full sentence
+    # and a four-item legend on the same line overlapped it.
+    fig.legend(handles=handles, loc="lower center", bbox_to_anchor=(0.5, 0.0),
+               ncol=4, frameon=False, fontsize=8.5)
+    fig.suptitle("E6  Decision quality  \u2014  where they differ, the policy picks the wider path 8x as often.",
+                 fontsize=11, color=INK, x=0.012, ha="left", y=0.97)
+    fig.tight_layout(rect=(0, 0.10, 1, 0.88))
+    fig.savefig(out_dir / "e6_decision_quality.png", dpi=200, facecolor="white")
+    plt.close(fig)
+    return True
+
+
+def figure_e7(results: dict, out_dir: Path) -> bool:
+    """E7: behaviour across offered load, not at one operating point."""
+    levels = [(1, "E7/P2_ML_RL_bg1"), (2, "E7/P2_ML_RL"), (6, "E7/P2_ML_RL_bg6")]
+    pts = [(mb, results[k]) for mb, k in levels if k in results]
+    if len(pts) < 2:
+        return False
+    x = [mb for mb, _ in pts]
+    rate = [s["detection_rate_in_fault"] * 100 for _, s in pts]
+    lat = [(s["detection_latency_in_fault_s"] or {}).get("mean") for _, s in pts]
+    err = [(s["detection_latency_in_fault_s"] or {}).get("ci95") for _, s in pts]
+
+    fig, axes = plt.subplots(1, 2, figsize=(10.6, 3.4), facecolor="white")
+    ax = axes[0]
+    ax.plot(x, rate, marker="o", color=ACCENT, linewidth=2)
+    for xi, yi in zip(x, rate):
+        ax.annotate(f"{yi:.0f}%", (xi, yi), textcoords="offset points", xytext=(0, 9),
+                    ha="center", fontsize=8.5, color=INK)
+    ax.set_ylim(0, 100); ax.set_xticks(x)
+    ax.set_xlabel("offered background load per host pair (Mbit/s)", fontsize=9, color=INK_MUTED)
+    ax.set_ylabel("faults detected (%)", fontsize=9, color=INK_MUTED)
+    ax.set_title("Detection holds across a 6x load range", fontsize=10.5, color=INK, loc="left", pad=8)
+    _style(ax); ax.yaxis.grid(True, color=GRID, linewidth=0.6)
+
+    ax = axes[1]
+    ax.errorbar(x, lat, yerr=[e or 0 for e in err], marker="o", color=ACCENT_2,
+                linewidth=2, ecolor=INK_MUTED, elinewidth=1.2, capsize=3)
+    for xi, yi in zip(x, lat):
+        if yi is not None:
+            ax.annotate(f"{yi:.0f}s", (xi, yi), textcoords="offset points", xytext=(0, 10),
+                        ha="center", fontsize=8.5, color=INK)
+    ax.set_xticks(x); ax.set_ylim(0, max(v for v in lat if v) * 1.45)
+    ax.set_xlabel("offered background load per host pair (Mbit/s)", fontsize=9, color=INK_MUTED)
+    ax.set_ylabel("time to detection (s)", fontsize=9, color=INK_MUTED)
+    ax.set_title("But it notices roughly twice as slowly", fontsize=10.5, color=INK, loc="left", pad=8)
+    _style(ax); ax.yaxis.grid(True, color=GRID, linewidth=0.6)
+
+    fig.suptitle("E7  Sensitivity to offered load  \u2014  static routing detected 0 of 15 at every level.",
+                 fontsize=11, color=INK, x=0.012, ha="left", y=0.985)
+    fig.tight_layout(rect=(0, 0, 1, 0.88))
+    fig.savefig(out_dir / "e7_load_sweep.png", dpi=200, facecolor="white")
+    plt.close(fig)
+    return True
+
+
+def figure_e8(results: dict, out_dir: Path) -> bool:
+    """E8: the safety claim is a count of zero, which is awkward to draw.
+
+    Drawn as counts per trial with an explicit zero marker, because a bar
+    chart of five zeroes is an empty frame that reads as missing data
+    rather than as the result.
+    """
+    s = results.get("E8/P2_ML_RL")
+    safety = (s or {}).get("safety")
+    if not safety:
+        return False
+    per = safety["predictions_after_kill_per_trial"]
+    fig, ax = plt.subplots(figsize=(9.2, 2.9), facecolor="white")
+    ypos = list(range(len(per)))[::-1]
+    for y, n in zip(ypos, per):
+        if n == 0:
+            ax.plot([0], [y], marker="|", markersize=16, color=ACCENT, markeredgewidth=2.5)
+            ax.text(0.06, y, "  0 predictions after the model became unreachable",
+                    va="center", ha="left", fontsize=9, color=ACCENT)
+        else:
+            ax.barh(y, n, height=0.5, color=ACCENT_2)
+            ax.text(n + 0.06, y, f"  {n} FABRICATED", va="center", ha="left",
+                    fontsize=9, color=ACCENT_2)
+    ax.set_yticks(ypos)
+    ax.set_yticklabels([f"trial {i+1}" for i in range(len(per))], fontsize=9, color=INK)
+    ax.set_xlim(0, 3)
+    ax.set_xlabel("predictions made after the inference service was killed", fontsize=9, color=INK_MUTED)
+    _style(ax)
+    fig.suptitle(f"E8  Safety under service failure  \u2014  {safety['fallbacks_after_kill']} "
+                 "routing fallback recorded with a reason.",
+                 fontsize=11, color=INK, x=0.012, ha="left", y=0.97)
+    fig.tight_layout(rect=(0, 0, 1, 0.86))
+    fig.savefig(out_dir / "e8_safety.png", dpi=200, facecolor="white")
+    plt.close(fig)
+    return True
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -403,6 +632,16 @@ def main() -> int:
         drawn.append("e2_by_fault.png")
     if figure_e3(by_fault, out_dir):
         drawn.append("e3_lead_time.png")
+    if figure_e4(results, out_dir):
+        drawn.append("e4_stability.png")
+    if figure_e5(results, out_dir):
+        drawn.append("e5_ablation.png")
+    if figure_e6(out_dir):
+        drawn.append("e6_decision_quality.png")
+    if figure_e7(results, out_dir):
+        drawn.append("e7_load_sweep.png")
+    if figure_e8(results, out_dir):
+        drawn.append("e8_safety.png")
 
     if not drawn:
         print("no experiment had enough recorded trials to draw yet")

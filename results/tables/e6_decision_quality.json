@@ -1,0 +1,23 @@
+{
+  "generated_at": 1789231548.6177545,
+  "data_source": "emulated_mininet",
+  "note": "decisions with fewer than 2 candidates offered are excluded",
+  "arms": {
+    "P1_ML_HEURISTIC": {
+      "decisions": 31,
+      "agreed_with_formula": 31,
+      "differed": 0,
+      "chose_wider": 0,
+      "chose_narrower": 0,
+      "chose_same_capacity": 0
+    },
+    "P2_ML_RL": {
+      "decisions": 44,
+      "agreed_with_formula": 11,
+      "differed": 33,
+      "chose_wider": 24,
+      "chose_narrower": 3,
+      "chose_same_capacity": 6
+    }
+  }
+}

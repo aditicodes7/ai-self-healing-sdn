@@ -1,5 +1,5 @@
 {
-  "generated_at": 1789227548.912525,
+  "generated_at": 1789231560.939955,
   "data_source": "emulated_mininet",
   "total_trials_recorded": 206,
   "results": {
@@ -63,7 +63,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E1/B2_RULE_BASED": {
       "trials_run": 5,
@@ -128,7 +129,8 @@
         "PARTIAL": 4,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E1/P1_ML_HEURISTIC": {
       "trials_run": 5,
@@ -193,7 +195,8 @@
         "PARTIAL": 1,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E1/P2_ML_RL": {
       "trials_run": 7,
@@ -258,7 +261,8 @@
         "PARTIAL": 1,
         "FAILED": 0
       },
-      "rl_fallbacks": 1
+      "rl_fallbacks": 1,
+      "safety": null
     },
     "E2/B1_SHORTEST_PATH": {
       "trials_run": 29,
@@ -320,7 +324,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E2/P2_ML_RL": {
       "trials_run": 29,
@@ -385,7 +390,8 @@
         "PARTIAL": 4,
         "FAILED": 0
       },
-      "rl_fallbacks": 11
+      "rl_fallbacks": 11,
+      "safety": null
     },
     "E3/B2_RULE_BASED": {
       "trials_run": 10,
@@ -448,7 +454,8 @@
         "PARTIAL": 6,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E3/P2_ML_RL": {
       "trials_run": 10,
@@ -511,7 +518,8 @@
         "PARTIAL": 1,
         "FAILED": 0
       },
-      "rl_fallbacks": 3
+      "rl_fallbacks": 3,
+      "safety": null
     },
     "E4/B2_RULE_BASED": {
       "trials_run": 10,
@@ -574,7 +582,8 @@
         "PARTIAL": 3,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E4/P1_ML_HEURISTIC": {
       "trials_run": 10,
@@ -637,7 +646,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E4/P2_ML_RL": {
       "trials_run": 10,
@@ -702,7 +712,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E5/P2_ML_RL": {
       "trials_run": 5,
@@ -767,7 +778,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E5/P2_ML_RL_nogates": {
       "trials_run": 5,
@@ -830,7 +842,8 @@
         "PARTIAL": 1,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E6/P1_ML_HEURISTIC": {
       "trials_run": 15,
@@ -895,7 +908,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E6/P2_ML_RL": {
       "trials_run": 15,
@@ -960,7 +974,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E7/B1_SHORTEST_PATH": {
       "trials_run": 5,
@@ -1020,7 +1035,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E7/B1_SHORTEST_PATH_bg1": {
       "trials_run": 5,
@@ -1080,7 +1096,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E7/B1_SHORTEST_PATH_bg6": {
       "trials_run": 5,
@@ -1140,7 +1157,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E7/P2_ML_RL": {
       "trials_run": 5,
@@ -1205,7 +1223,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E7/P2_ML_RL_bg1": {
       "trials_run": 5,
@@ -1270,7 +1289,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E7/P2_ML_RL_bg6": {
       "trials_run": 5,
@@ -1333,7 +1353,8 @@
         "PARTIAL": 1,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E8/P2_ML_RL": {
       "trials_run": 5,
@@ -1395,7 +1416,18 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 1
+      "rl_fallbacks": 1,
+      "safety": {
+        "trials_with_service_killed": 5,
+        "predictions_after_kill_per_trial": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "fallbacks_after_kill": 1
+      }
     }
   },
   "by_fault": {
@@ -1459,7 +1491,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E1/B2_RULE_BASED/gradual_degradation": {
       "trials_run": 5,
@@ -1524,7 +1557,8 @@
         "PARTIAL": 4,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E1/P1_ML_HEURISTIC/gradual_degradation": {
       "trials_run": 5,
@@ -1589,7 +1623,8 @@
         "PARTIAL": 1,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E1/P2_ML_RL/gradual_degradation": {
       "trials_run": 7,
@@ -1654,7 +1689,8 @@
         "PARTIAL": 1,
         "FAILED": 0
       },
-      "rl_fallbacks": 1
+      "rl_fallbacks": 1,
+      "safety": null
     },
     "E2/B1_SHORTEST_PATH/congestion": {
       "trials_run": 5,
@@ -1715,7 +1751,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E2/B1_SHORTEST_PATH/gradual_degradation": {
       "trials_run": 5,
@@ -1776,7 +1813,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E2/B1_SHORTEST_PATH/high_latency": {
       "trials_run": 5,
@@ -1838,7 +1876,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E2/B1_SHORTEST_PATH/link_failure": {
       "trials_run": 5,
@@ -1898,7 +1937,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E2/B1_SHORTEST_PATH/packet_loss": {
       "trials_run": 4,
@@ -1960,7 +2000,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E2/B1_SHORTEST_PATH/rising_errors": {
       "trials_run": 5,
@@ -2022,7 +2063,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E2/P2_ML_RL/congestion": {
       "trials_run": 5,
@@ -2086,7 +2128,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 1
+      "rl_fallbacks": 1,
+      "safety": null
     },
     "E2/P2_ML_RL/gradual_degradation": {
       "trials_run": 4,
@@ -2150,7 +2193,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 4
+      "rl_fallbacks": 4,
+      "safety": null
     },
     "E2/P2_ML_RL/high_latency": {
       "trials_run": 5,
@@ -2215,7 +2259,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 3
+      "rl_fallbacks": 3,
+      "safety": null
     },
     "E2/P2_ML_RL/link_failure": {
       "trials_run": 5,
@@ -2278,7 +2323,8 @@
         "PARTIAL": 3,
         "FAILED": 0
       },
-      "rl_fallbacks": 2
+      "rl_fallbacks": 2,
+      "safety": null
     },
     "E2/P2_ML_RL/packet_loss": {
       "trials_run": 5,
@@ -2340,7 +2386,8 @@
         "PARTIAL": 1,
         "FAILED": 0
       },
-      "rl_fallbacks": 1
+      "rl_fallbacks": 1,
+      "safety": null
     },
     "E2/P2_ML_RL/rising_errors": {
       "trials_run": 5,
@@ -2402,7 +2449,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E3/B2_RULE_BASED/congestion": {
       "trials_run": 5,
@@ -2465,7 +2513,8 @@
         "PARTIAL": 1,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E3/B2_RULE_BASED/gradual_degradation": {
       "trials_run": 5,
@@ -2527,7 +2576,8 @@
         "PARTIAL": 5,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E3/P2_ML_RL/congestion": {
       "trials_run": 5,
@@ -2590,7 +2640,8 @@
         "PARTIAL": 1,
         "FAILED": 0
       },
-      "rl_fallbacks": 1
+      "rl_fallbacks": 1,
+      "safety": null
     },
     "E3/P2_ML_RL/gradual_degradation": {
       "trials_run": 5,
@@ -2653,7 +2704,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 2
+      "rl_fallbacks": 2,
+      "safety": null
     },
     "E4/B2_RULE_BASED/congestion": {
       "trials_run": 5,
@@ -2716,7 +2768,8 @@
         "PARTIAL": 2,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E4/B2_RULE_BASED/gradual_degradation": {
       "trials_run": 5,
@@ -2779,7 +2832,8 @@
         "PARTIAL": 1,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E4/P1_ML_HEURISTIC/congestion": {
       "trials_run": 5,
@@ -2842,7 +2896,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E4/P1_ML_HEURISTIC/gradual_degradation": {
       "trials_run": 5,
@@ -2905,7 +2960,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E4/P2_ML_RL/congestion": {
       "trials_run": 5,
@@ -2970,7 +3026,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E4/P2_ML_RL/gradual_degradation": {
       "trials_run": 5,
@@ -3033,7 +3090,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E5/P2_ML_RL/gradual_degradation": {
       "trials_run": 5,
@@ -3098,7 +3156,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E5/P2_ML_RL_nogates/gradual_degradation": {
       "trials_run": 5,
@@ -3161,7 +3220,8 @@
         "PARTIAL": 1,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E6/P1_ML_HEURISTIC/congestion": {
       "trials_run": 5,
@@ -3224,7 +3284,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E6/P1_ML_HEURISTIC/gradual_degradation": {
       "trials_run": 5,
@@ -3287,7 +3348,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E6/P1_ML_HEURISTIC/high_latency": {
       "trials_run": 5,
@@ -3349,7 +3411,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E6/P2_ML_RL/congestion": {
       "trials_run": 5,
@@ -3412,7 +3475,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E6/P2_ML_RL/gradual_degradation": {
       "trials_run": 5,
@@ -3477,7 +3541,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E6/P2_ML_RL/high_latency": {
       "trials_run": 5,
@@ -3539,7 +3604,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E7/B1_SHORTEST_PATH/congestion": {
       "trials_run": 5,
@@ -3599,7 +3665,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E7/B1_SHORTEST_PATH_bg1/congestion": {
       "trials_run": 5,
@@ -3659,7 +3726,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E7/B1_SHORTEST_PATH_bg6/congestion": {
       "trials_run": 5,
@@ -3719,7 +3787,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E7/P2_ML_RL/congestion": {
       "trials_run": 5,
@@ -3784,7 +3853,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E7/P2_ML_RL_bg1/congestion": {
       "trials_run": 5,
@@ -3849,7 +3919,8 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E7/P2_ML_RL_bg6/congestion": {
       "trials_run": 5,
@@ -3912,7 +3983,8 @@
         "PARTIAL": 1,
         "FAILED": 0
       },
-      "rl_fallbacks": 0
+      "rl_fallbacks": 0,
+      "safety": null
     },
     "E8/P2_ML_RL/gradual_degradation": {
       "trials_run": 5,
@@ -3974,7 +4046,18 @@
         "PARTIAL": 0,
         "FAILED": 0
       },
-      "rl_fallbacks": 1
+      "rl_fallbacks": 1,
+      "safety": {
+        "trials_with_service_killed": 5,
+        "predictions_after_kill_per_trial": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "fallbacks_after_kill": 1
+      }
     }
   }
 }
