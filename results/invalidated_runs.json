@@ -42,6 +42,24 @@
       ],
       "recorded": "2026-09-11",
       "reason": "E6 attempt 1. Not a valid test of its own claim: in 7 of 11 selections the RL policy returned action 0 ('do not reroute'), remediation_manager discarded the answer (rl_selected_no_reroute) and used the weighted-cost heuristic instead -- so roughly two thirds of P2's decisions were made by P1's algorithm and the experiment largely compared the heuristic against itself. The trials themselves ran cleanly (no duration anomalies, no errors); they simply do not measure path-selection quality. Fixed by masking the hold action during remediation (rl/env/actions.py allow_hold). See docs/limitations.md."
+    },
+    {
+      "experiment": "E6",
+      "id_range": [
+        233,
+        262
+      ],
+      "recorded": "2026-09-12",
+      "reason": "E6 attempt 2 (hold action masked, so the RL made every selection). Excluded not because the trials were bad -- they ran cleanly -- but because the run predates route_changes.decision_inputs_json and therefore cannot be interpreted: an offline replay of a recorded decision, fed metrics reconstructed from the database, chose a DIFFERENT path from the one actually taken, and with no record of what the selector was shown there is no way to tell a bad decision from a different input. Superseded by ids 309-338, which carry that record. See docs/limitations.md."
+    },
+    {
+      "experiment": "E5",
+      "id_range": [
+        268,
+        268
+      ],
+      "recorded": "2026-09-12",
+      "reason": "Single orphaned trial from the E5 run that was in flight when the VM crashed hard (no clean shutdown; last kernel message 'htb: too many events!'). The batch never completed. Superseded by ids 339-343."
     }
   ]
 }

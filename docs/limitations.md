@@ -374,6 +374,68 @@ never looked at it and reported a number that meant something else. An
 experiment has to capture the thing it claims, not a quantity that
 correlates with it on a good day.
 
+## E6 ANSWERED: the policy prefers higher-capacity paths than the formula
+
+Resolved 2026-09-12, from the record rather than a reconstruction. The
+retraction below stands -- the earlier "the RL routes worse" conclusion
+was wrong -- and this is what the evidence actually shows.
+
+With `route_changes.decision_inputs_json` in place, every routing
+decision in the valid E6 batch (ids 309-338) can be replayed against the
+exact inputs the selector was shown, and the weighted-cost formula run on
+those same inputs for comparison. Only decisions offering two or more
+candidates count; a single candidate is not a choice.
+
+| arm | decisions | agreed with formula | differed | chose **wider** | chose narrower | same capacity |
+|---|---:|---:|---:|---:|---:|---:|
+| P1 hand-tuned formula | 31 | **31** | 0 | -- | -- | -- |
+| P2 learned policy | 44 | 11 | 33 | **24** | 3 | 6 |
+
+**P1 agreeing 31 of 31 is the control for the method.** P1 *is* the
+formula, so anything other than perfect agreement would mean the replay
+was misreading the record. It does not.
+
+**Where the policy differs from the formula, it picks the
+higher-capacity path 8 times as often as the lower one** (24 vs 3). That
+is a real, measured behavioural difference, and because P1 and P2 differ
+in nothing but path selection, it is attributable to the learned policy
+and nothing else.
+
+Worked example from one trial, showing why the earlier conclusion
+inverted:
+
+```
+candidates offered            formula cost     chosen
+[1, 3, 6]        5 Mbit           0.50         <- formula would pick this
+[1, 2, 3, 6]    10 Mbit           0.75
+[1, 2, 5, 6]     8 Mbit           0.75
+[1, 4, 5, 6]    10 Mbit           0.75         <- the policy picked this
+```
+
+The *formula* is the one biased toward the narrow 2-hop path here: its
+cost function weights summed latency and hop count, and `hop_count` at
+0.25 does not offset a short path that happens to be the thinnest. The
+policy went the other way.
+
+**What this does NOT establish.** That wider is always better, or that
+P2's end-to-end outcomes beat P1's. E6's aggregate throughput figures do
+not show that (P1 97.6 +/- 0.5%, P2 86.0 +/- 16.8%), and on this topology
+that metric is confounded anyway -- the shortest-hop path is also the
+lowest-capacity one, so any reroute at all gains throughput, as recorded
+elsewhere in this file. The defensible claim is about decision quality,
+which is exactly what E6 was written to isolate: **the learned policy
+makes systematically different and more capacity-aware path choices than
+the hand-tuned cost function.** Whether that converts into better
+end-to-end performance on a topology where the metric is not confounded
+is future work, not a result.
+
+**The methodological point, which is the transferable one.** This
+question was open for two days and produced one confidently wrong
+conclusion, and the thing that settled it was not a better experiment --
+it was recording what the system was looking at when it decided. The
+aggregate outcome metrics could not distinguish a bad decision from a
+different input; the decision record could, immediately.
+
 ## RETRACTED: the E6 conclusion below is not supported by the evidence
 
 **The section that follows is kept for the record but its conclusion is
