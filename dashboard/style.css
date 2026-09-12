@@ -505,3 +505,29 @@ select, .ghost-btn, .tab {
    coloured like a failure state so it reads as one at a glance. */
 .result-table tr.row-blind td { color: var(--failed); }
 .result-table tr.row-full td:nth-child(2) { color: var(--healthy); }
+
+/* A figure sitting inside an experiment card, under its table. */
+.result-figure.inline {
+  margin: 14px 0 0;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px;
+}
+
+.result-figure.inline img { display: block; width: 100%; height: auto; border-radius: 2px; }
+
+/* A detection logged after the fault was already gone is a real event,
+   but not a detection -- marked, never folded into the rate. */
+.late {
+  font-size: 11px;
+  color: var(--degraded);
+  white-space: nowrap;
+}
+
+/* A mean from too few samples still shows, with its n attached, rather
+   than being hidden or presented as if it were solid. */
+.prov {
+  font-size: 11px;
+  color: var(--text-muted);
+}

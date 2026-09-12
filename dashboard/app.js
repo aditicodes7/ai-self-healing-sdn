@@ -792,6 +792,66 @@
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
 
+  // Which figure belongs to which experiment. The results JSON has no
+  // link to the figure files, and inferring it from a filename prefix
+  // would silently attach the wrong image the first time one is renamed.
+  const EXPERIMENT_FIGURES = {
+    E1: ["e1_comparison.png", "e1_ladder.png"],
+    E2: ["e2_by_fault.png"],
+    E3: ["e3_lead_time.png"],
+    E4: ["e4_stability.png"],
+    E5: ["e5_ablation.png"],
+    E6: ["e6_decision_quality.png"],
+    E7: ["e7_load_sweep.png"],
+    E8: ["e8_safety.png"],
+  };
+
+  // Arm names carry the experiment's variable in a suffix. Spelled out
+  // here so a reader sees "gates removed", not "_nogates".
+  const ARM_LABEL = {
+    _nogates: "gates removed (ablated)",
+    _bg1: "1 Mbit load",
+    _bg6: "6 Mbit load",
+  };
+
+  function armLabel(arm) {
+    for (const suffix of Object.keys(ARM_LABEL)) {
+      if (arm.endsWith(suffix)) {
+        const base = arm.slice(0, -suffix.length);
+        return `${SYSTEM_LABEL_SHORT[base] || base} — ${ARM_LABEL[suffix]}`;
+      }
+    }
+    return SYSTEM_LABEL_SHORT[arm] || arm;
+  }
+
+  function num(entry, digits, unit) {
+    if (!entry || entry.mean == null) return "—";
+    const v = entry.mean.toFixed(digits) + (unit || "");
+    return entry.underpowered ? `${v} <span class="prov">(n=${entry.n})</span>` : v;
+  }
+
+  function experimentArmsTable(results, expId) {
+    const rows = Object.entries(results)
+      .filter(([k]) => k.startsWith(expId + "/"))
+      .map(([k, s]) => {
+        const arm = k.split("/")[1];
+        const rate = s.detection_rate_in_fault;
+        const late = s.detections_after_fault_ended;
+        return `<tr>
+          <td>${escapeHtml(armLabel(arm))}</td>
+          <td class="num">${rate == null ? "—" : pct(rate)}${late ? ` <span class="late">+${late} late</span>` : ""}</td>
+          <td class="num">${num(s.detection_latency_in_fault_s, 1, "s")}</td>
+          <td class="num">${num(s.recovery_time_s, 1, "s")}</td>
+          <td class="num">${num(s.reroute_count, 2, "")}</td>
+          <td class="num">${s.trials_usable}</td>
+        </tr>`;
+      });
+    if (!rows.length) return null;
+    return `<table class="result-table">
+      <thead><tr><th>arm</th><th>detected</th><th>detection</th><th>recovery</th><th>reroutes</th><th>trials</th></tr></thead>
+      <tbody>${rows.join("")}</tbody></table>`;
+  }
+
   async function loadPlan() {
     const host = $("results-plan");
     if (!host) return;
@@ -839,20 +899,32 @@
     const a = data.available || {};
     const cards = [];
 
-    if (a.experiments && a.experiments.results) {
-      const table = experimentTable(a.experiments.results);
-      if (table) {
-        cards.push(card("Experiment E1 — the full system vs three baselines",
-          "Each row adds one mechanism to the row above it, so a difference is attributable.",
-          table));
-      }
+    // One section per experiment, in order, each carrying the claim it
+    // was written to test. Previously only E1 and E2 appeared, so six
+    // experiments' worth of measured results were invisible here.
+    let plan = [];
+    try {
+      plan = (await getJSON("/api/experiment_plan")).experiments || [];
+    } catch (err) {
+      plan = [];
     }
-    if (a.experiments && a.experiments.by_fault) {
-      const t2 = e2Table(a.experiments.by_fault);
-      if (t2) {
-        cards.push(card("Experiment E2 — coverage across six fault types",
-          "Where the system works, and where it does not.", t2));
+    const res = (a.experiments && a.experiments.results) || {};
+    for (const exp of plan) {
+      const id = exp.experiment_id;
+      const table = experimentArmsTable(res, id);
+      if (!table) continue;
+      let body = table;
+      if (id === "E2" && a.experiments.by_fault) {
+        const t2 = e2Table(a.experiments.by_fault);
+        if (t2) body += t2;
       }
+      const figs = (EXPERIMENT_FIGURES[id] || []).filter((f) => (data.figures || []).includes(f));
+      if (figs.length) {
+        body += figs.map((f) =>
+          `<figure class="result-figure inline"><img src="/figures/${f}" alt="${escapeHtml(id)} result" loading="lazy" /></figure>`
+        ).join("");
+      }
+      cards.push(card(`${id} — ${escapeHtml(exp.title)}`, escapeHtml(exp.claim), body));
     }
     if (a.ml) cards.push(card("The prediction model", "Predicts a link is about to degrade.", mlCard(a.ml)));
     if (a.rl_evaluation) {
