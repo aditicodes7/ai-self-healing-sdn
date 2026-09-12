@@ -19,3 +19,9 @@ results/processed/*
 !results/processed/.gitkeep
 .DS_Store
 models_matched/*.joblib
+
+# SQLite side-files. Transient: created whenever a database is opened
+# in WAL mode (the dashboard reading the demo DB is enough) and gone
+# when it closes cleanly. Committing them would check in a lock file.
+*.db-wal
+*.db-shm
