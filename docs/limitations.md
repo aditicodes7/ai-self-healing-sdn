@@ -333,6 +333,38 @@ sim-to-real gap on top of the queueing-delay one documented above, and
 should be stated in the technical paper's RL methodology section
 alongside it.
 
+## E5 ANSWERED: the persistence and stability layer is load-bearing
+
+Run properly for the first time on 2026-09-12, with the ablation arm the
+experiment always required (control ids 339-343, ablated ids 349-353).
+
+| | detected | reroutes per run | mean |
+|---|---|---|---:|
+| gates ON (control) | 3/5 | 0, 1, 1, 1, 0 | **0.6** |
+| gates OFF (ablated) | 5/5 | 3, 3, 5, 6, 4 | **4.2** |
+
+**The two distributions do not overlap.** Every gated trial rerouted at
+most once; every ablated trial rerouted at least three times. Removing
+the layer multiplies reroutes by **7x**, on the same fault, the same
+topology and the same predictions -- the only difference is acting on one
+prediction instead of three consecutive ones, and dropping the cooldown,
+route hold-down and minimum-improvement threshold.
+
+**The detection column is the honest other half of the result.** Ablated,
+the system detects 5/5 against the control's 3/5. That is not the gates
+failing; it is the trade they exist to make. `persistence.consecutive=3`
+means a single positive prediction is ignored, so some genuine faults are
+missed -- and in exchange the system does not act on every twitch of the
+model. The control misses 2 of 5 faults and stays stable; the ablation
+catches all 5 and thrashes. Reporting only the reroute count would
+overstate the gates, and reporting only detection would overstate their
+cost.
+
+This is the cleanest experimental result in the project, and it is worth
+noting why: it is the only one where the two arms differ in exactly one
+configurable thing, nothing had to be reconstructed after the fact, and
+the effect is large enough that no statistics are needed to see it.
+
 ## E7 measured one operating point and called it a sweep
 
 Same defect as E5, found by checking rather than assuming. E7 claims
