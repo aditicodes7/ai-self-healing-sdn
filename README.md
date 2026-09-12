@@ -10,6 +10,62 @@ authoritative phase-by-phase status, environment, decisions, and test
 results. This README gives orientation; PROJECT_STATE.md is never stale by
 more than one commit.
 
+Architecture: [docs/architecture.md](docs/architecture.md) ·
+Known limitations: [docs/limitations.md](docs/limitations.md) ·
+Design rationale: [docs/decisions.md](docs/decisions.md)
+
+## Measured results
+
+All figures below come from executed runs on an emulated Mininet network
+(6 switches, 8 links, 5-10 Mbit), read from `results/tables/`. Faults are
+real `tc netem` impairments, not simulated numbers.
+
+**Coverage across six fault types** (E2, 60 trials, the full system):
+
+| fault | detected | recovery |
+|---|---|---|
+| link failure (cable cut) | **100%** (5/5) | 20 s |
+| gradual degradation | **100%** (4/4) | 39 s |
+| congestion | 80% (4/5) | 70 s |
+| high latency | 60% (3/5) | 47 s |
+| packet loss | 20% (1/5) | 75 s |
+| rising errors | **0%** (0/5) | never detected |
+
+Static-routing control: **0 detections in 29 trials**, as an inert baseline
+should be. The two bottom rows are a predicted result, not a surprise: Open
+vSwitch cannot observe `tc netem` loss or corruption on veth links, so those
+features are identically zero and the model has nothing to learn from. E2
+exists to measure that rather than assert it.
+
+## Two hypotheses this project's own experiments falsified
+
+Reported here rather than buried, because the evidence is the point.
+
+**"Prediction detects earlier than a threshold."** It does not. On
+in-fault detections the reactive baseline averaged **59.7 s** against the
+full system's **72.9 s** (E3). What the full system is better at is
+*coverage* — it caught **70%** of faults while they were still happening
+against the baseline's **40%**, and every one of its detections landed
+during the fault, where 6 of the baseline's 10 were reactions to the fault
+being removed. That is a real advantage, but it is a different claim, and
+substituting it silently would be a retrofitted hypothesis.
+
+**"The learned routing policy beats the hand-tuned formula."** Currently
+**unproven in both directions**. The first E6 run was invalid — the policy
+declined to act in 7 of 11 selections and the heuristic decided instead, so
+the experiment largely compared the formula against itself. After fixing
+that, an offline replay of a recorded decision contradicted what the live
+system did, which meant the run could not be interpreted at all. The system
+now records the exact inputs behind every routing decision
+(`route_changes.decision_inputs_json`) and E6 is being re-run against that
+record.
+
+Six separate instances of one recurring root cause — a measurement taken
+under conditions that did not match what was claimed — were found and
+documented during evaluation. They are written up in
+[docs/limitations.md](docs/limitations.md) as a single pattern rather than
+six separate mishaps.
+
 ## Data honesty
 
 Every number in this repository's docs, figures, and papers traces to a
