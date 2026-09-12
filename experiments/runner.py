@@ -99,7 +99,7 @@ def _write_trial_config(
     return out
 
 
-def _start_background_traffic(net, duration_s: float) -> list:
+def _start_background_traffic(net, duration_s: float, mbit: int | None = None) -> list:
     """Continuous load so a fault has something to act on. Returns the
     processes so the trial can stop them -- a daemonised iperf3 outlives
     its Mininet namespace and accumulates across trials."""
@@ -112,7 +112,7 @@ def _start_background_traffic(net, duration_s: float) -> list:
         procs.append(server.popen(["iperf3", "-s", "-p", "5301"]))
         procs.append(client.popen([
             "iperf3", "-c", server.IP(), "-p", "5301", "-u",
-            "-b", f"{BACKGROUND_UDP_MBIT}M", "-t", str(int(duration_s)),
+            "-b", f"{mbit or BACKGROUND_UDP_MBIT}M", "-t", str(int(duration_s)),
         ]))
     return procs
 
@@ -248,12 +248,20 @@ def _timeline_from_db(
 
 def run_trial(experiment_id: str, system: str, fault_type: str, seed: int,
               results_root: Path, kill_service_mid_run: bool = False,
-              ablate_gates: bool = False) -> dict:
+              ablate_gates: bool = False, background_mbit: int | None = None) -> dict:
     cfg = load_config()
     # The suffix keeps the two E5 arms apart in the shared results
     # database and in every table built from it -- without it the
     # ablation would be averaged into the control.
     suffix = "_nogates" if ablate_gates else ""
+    # E7 sweeps offered load. Its claim is that behaviour is
+    # characterised ACROSS load rather than at one convenient operating
+    # point, and the first E7 batch ran every trial at the same hardcoded
+    # 2 Mbit -- so it measured one point and claimed a curve. The level
+    # goes in the trial id because a sweep whose points cannot be told
+    # apart afterwards is not a sweep.
+    if background_mbit is not None:
+        suffix += f"_bg{background_mbit}"
     trial_id = f"{experiment_id}_{system}_{fault_type}_seed{seed}{suffix}"
     trial_dir = results_root / trial_id
     if trial_dir.exists():
@@ -298,7 +306,8 @@ def run_trial(experiment_id: str, system: str, fault_type: str, seed: int,
         # control plane while the controller is still learning.
         net.pingAll(timeout="1")
         bg_procs = _start_background_traffic(
-            net, SETTLE_BEFORE_FAULT_S + FAULT_DURATION_S + POST_FAULT_OBSERVE_S + 120
+            net, SETTLE_BEFORE_FAULT_S + FAULT_DURATION_S + POST_FAULT_OBSERVE_S + 120,
+            mbit=background_mbit,
         )
         log(f"  network up, background traffic running; settling {SETTLE_BEFORE_FAULT_S}s")
         time.sleep(SETTLE_BEFORE_FAULT_S)
@@ -416,6 +425,9 @@ def main() -> int:
     parser.add_argument("--faults", nargs="+", help="override the experiment's faults")
     parser.add_argument("--pilot", action="store_true",
                         help="smallest useful check: E1, B1 vs P2, one seed")
+    parser.add_argument("--background-mbit", type=int, default=None,
+                        help="E7's load sweep: offered background load per host pair, "
+                             "in Mbit/s (default: the runner's standard 2)")
     parser.add_argument("--ablate-gates", action="store_true",
                         help="E5's second arm: persistence.consecutive=1 and the "
                              "stability cooldown/hold/min-improvement zeroed")
@@ -442,7 +454,8 @@ def main() -> int:
     for experiment_id, system, fault, seed in combos:
         records.append(run_trial(experiment_id, system, fault, seed, results_root,
                                  kill_service_mid_run=(experiment_id == "E8"),
-                                 ablate_gates=args.ablate_gates))
+                                 ablate_gates=args.ablate_gates,
+                                 background_mbit=args.background_mbit))
 
     print()
     log("SUMMARY")

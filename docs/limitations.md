@@ -333,6 +333,29 @@ sim-to-real gap on top of the queueing-delay one documented above, and
 should be stated in the technical paper's RL methodology section
 alongside it.
 
+## E7 measured one operating point and called it a sweep
+
+Same defect as E5, found by checking rather than assuming. E7 claims
+behaviour is "characterised across offered load, not just at one
+convenient operating point". `BACKGROUND_UDP_MBIT = 2` is a module
+constant and nothing overrode it, so all ten trials of the first batch
+(ids 299-308) ran at identical load. One point, presented as a curve.
+
+`--background-mbit` now sets the offered load per host pair and appends
+`_bgN` to the trial id. The suffix matters as much as the parameter: the
+shared results database carries no other record of the level, so a sweep
+whose points cannot be told apart afterwards is indistinguishable from
+repeated trials at one load -- which is exactly what the first batch
+was.
+
+**Both E5 and E7 shipped an experiment definition that the runner never
+implemented, and both looked complete**: trials ran, results were
+recorded, the analyser aggregated them, and the numbers were plausible.
+Nothing in the pipeline checks that an experiment's stated design is the
+design that executed. That is worth a sentence in the paper's
+methodology section, because it is the same failure as reporting a
+metric the experiment did not measure -- just one level further up.
+
 ## E5 was never an ablation, and the VM-crash explanation was wrong
 
 Two corrections.
