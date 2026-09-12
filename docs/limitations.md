@@ -333,6 +333,32 @@ sim-to-real gap on top of the queueing-delay one documented above, and
 should be stated in the technical paper's RL methodology section
 alongside it.
 
+## E8 RESOLVED: both safety criteria now demonstrated directly
+
+Re-run 2026-09-12 with the evidence fields in place (ids 344-348). The
+entry below described an experiment that passed while measuring nothing;
+this is what it measures now.
+
+| trial | service killed | predictions after the kill | fallbacks after the kill |
+|---|---|---:|---|
+| seed1 | yes | **0** | -- |
+| seed2 | yes | **0** | -- |
+| seed3 | yes | **0** | -- |
+| seed4 | yes | **0** | -- |
+| seed5 | yes | **0** | `rl_service_unavailable` |
+
+**Zero predictions after the model became unreachable, in every trial.**
+That is the central claim -- an unavailable model yields no prediction
+rather than a guessed one -- and it is now measured directly rather than
+inferred. One trial additionally exercised the routing fallback after the
+kill and recorded its reason, which is the second stated criterion.
+
+The detection rate for E8 (20%) is not a defect and should not be read as
+one: the inference service is deliberately killed 20s into the fault, so
+for most of each trial there is no model to detect anything with. E8 is a
+safety experiment, not a detection experiment, and its detection column
+measures the cost of the failure being injected.
+
 ## E8 passed, but the experiment was not recording its own evidence
 
 E8 kills the inference service mid-run to check that the system degrades

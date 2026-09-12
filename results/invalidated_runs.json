@@ -60,6 +60,15 @@
       ],
       "recorded": "2026-09-12",
       "reason": "Single orphaned trial from the E5 run that was in flight when the VM crashed hard (no clean shutdown; last kernel message 'htb: too many events!'). The batch never completed. Superseded by ids 339-343."
+    },
+    {
+      "experiment": "E8",
+      "id_range": [
+        263,
+        267
+      ],
+      "recorded": "2026-09-12",
+      "reason": "E8 attempt 1. The trials ran and the safety gate worked, but the runner recorded no evidence for the claim: it counted RL fallbacks only from fault onset onward, and the kill fires 20s after injection while detection and remediation completed 14-16s in, so the measured window contained nothing by construction. Superseded by ids 344-348, which record service_killed_at, n_predictions_after_service_kill and rl_fallbacks_after_service_kill. See docs/limitations.md."
     }
   ]
 }
