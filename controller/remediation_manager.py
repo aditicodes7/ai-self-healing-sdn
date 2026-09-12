@@ -24,6 +24,7 @@ queryable, not just log-visible.
 from __future__ import annotations
 
 import dataclasses
+import json
 import time
 from typing import TYPE_CHECKING
 
@@ -148,6 +149,10 @@ class RemediationManager:
             incident_id, flow_ctx.flow_key, current_path, chosen_path,
             decision_reason, changed=True, selector=selector,
             rl_fallback=rl_fallback, rl_fallback_reason=rl_fallback_reason,
+            decision_inputs=self._decision_inputs(
+                [p for p, _ in heuristic_candidates], link_metrics,
+                degradation_probs or {}, link_id, current_path,
+            ),
         )
 
         match = FlowMatch(ipv4_src=flow_ctx.ipv4_src, ipv4_dst=flow_ctx.ipv4_dst)
@@ -233,6 +238,7 @@ class RemediationManager:
         self, incident_id: str, flow_key: str, old_path: list[int] | None,
         new_path: list[int] | None, reason: str, changed: bool, selector: RouteSelector,
         rl_fallback: bool = False, rl_fallback_reason: str | None = None,
+        decision_inputs: dict | None = None,
     ) -> None:
         self.db.insert(
             "route_changes",
@@ -247,5 +253,43 @@ class RemediationManager:
                 "selector": selector.value,
                 "rl_fallback": 1 if rl_fallback else 0,
                 "rl_fallback_reason": rl_fallback_reason,
+                "decision_inputs_json": json.dumps(decision_inputs) if decision_inputs else None,
             },
         )
+
+    @staticmethod
+    def _decision_inputs(
+        candidates: list[list[int]], link_metrics: dict, degradation_probs: dict,
+        degraded_link_id: str | None, current_path: list[int] | None,
+    ) -> dict:
+        """What the selector was shown, recorded alongside what it chose.
+
+        Without this, E6's result was uninterpretable. The RL and the
+        heuristic disagreed on the real network, and replaying the same
+        policy offline against metrics reconstructed from the database
+        produced a DIFFERENT choice from the one actually taken -- so
+        there was no way to distinguish a bad decision from a different
+        input, and the two explanations call for opposite fixes. Only the
+        candidates offered are recorded, not every link in the topology:
+        those are the paths the decision ranged over.
+        """
+        wanted = {
+            link_id_for_edge(u, v)
+            for path in candidates for u, v in zip(path, path[1:])
+        }
+        return {
+            "candidates": candidates,
+            "current_path": current_path,
+            "degraded_link_id": degraded_link_id,
+            "link_metrics": {
+                lid: {
+                    "utilization": m.utilization,
+                    "latency_ms": m.latency_ms,
+                    "loss_rate": m.loss_rate,
+                }
+                for lid, m in link_metrics.items() if lid in wanted
+            },
+            "degradation_probs": {
+                lid: p for lid, p in degradation_probs.items() if lid in wanted
+            },
+        }

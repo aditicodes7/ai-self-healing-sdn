@@ -104,6 +104,16 @@ CREATE TABLE IF NOT EXISTS route_changes (
     -- happens to notice.
     rl_fallback        INTEGER NOT NULL DEFAULT 0,
     rl_fallback_reason TEXT,
+    -- Phase 22: the exact inputs the selector was shown -- candidate
+    -- paths, per-link metrics, degradation probabilities, the degraded
+    -- link and the current path. Added because E6 could not be
+    -- interpreted without it: the RL and the heuristic disagreed on the
+    -- real network, and an offline replay of the same policy against
+    -- metrics reconstructed from the database chose a DIFFERENT path
+    -- from the one actually taken. With no record of what the selector
+    -- saw, there was no way to tell a bad decision apart from a
+    -- different input, and both explanations imply opposite fixes.
+    decision_inputs_json TEXT,
     FOREIGN KEY (incident_id) REFERENCES incidents (incident_id)
 );
 

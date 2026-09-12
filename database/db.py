@@ -38,11 +38,29 @@ def connect(db_path: str | Path, wal: bool = True) -> sqlite3.Connection:
     return conn
 
 
+# Columns added to a table after databases already existed in the wild.
+# CREATE TABLE IF NOT EXISTS cannot introduce one, and the working tree
+# must keep running against databases written by earlier versions, so
+# each is added here when absent. Kept as data rather than a migration
+# framework: the approved stack is stdlib sqlite3 with no ORM.
+_ADDED_COLUMNS = (
+    ("route_changes", "decision_inputs_json", "TEXT"),
+)
+
+
+def _add_missing_columns(conn: sqlite3.Connection) -> None:
+    for table, column, coltype in _ADDED_COLUMNS:
+        existing = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if existing and column not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}")
+
+
 def init_schema(conn: sqlite3.Connection, schema_path: str | Path | None = None) -> None:
     """Execute schema.sql against an open connection. Idempotent."""
     path = Path(schema_path) if schema_path is not None else _SCHEMA_PATH
     with open(path, "r") as f:
         conn.executescript(f.read())
+    _add_missing_columns(conn)
     conn.commit()
 
 

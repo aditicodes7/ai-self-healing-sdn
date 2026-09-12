@@ -1,3 +1,4 @@
+import json
 import time
 
 import networkx as nx
@@ -398,3 +399,31 @@ def test_rl_is_not_allowed_to_answer_hold_during_remediation(db, manager_with_rl
         "remediation must mask out the hold action; letting the policy decline "
         "hands the decision to the heuristic and misattributes it to the RL"
     )
+
+
+def test_route_change_records_what_the_selector_was_shown(db, manager_with_rl, flow_ctx):
+    """Every route decision stores its own inputs.
+
+    E6 could not be interpreted without this. The RL and the heuristic
+    disagreed on the real network, and replaying the same policy offline
+    against metrics reconstructed from the database produced a different
+    choice from the one actually taken -- so a bad decision and a
+    different input looked identical from the record, and they call for
+    opposite fixes.
+    """
+    _open_incident(db, "inc-1", "s1-s3")
+    rl_client = RecordingRLClient(FakeRLDecision(action=1, chosen_path=[1, 2, 3, 6]))
+    manager = manager_with_rl(rl_client)
+    metrics = {"s1-s2": LinkMetrics(utilization=0.2, latency_ms=9.0, loss_rate=0.0)}
+
+    manager.remediate("inc-1", "s1-s3", flow_ctx, _scenario_a_graph(), metrics,
+                      _all_datapaths(), [[1, 3, 6]], degradation_probs={"s1-s2": 0.4})
+
+    row = db.query_one("SELECT decision_inputs_json FROM route_changes WHERE changed = 1")
+    assert row is not None and row["decision_inputs_json"], "decision inputs were not recorded"
+    saved = json.loads(row["decision_inputs_json"])
+    assert saved["candidates"], "the candidate set the decision ranged over must be recorded"
+    assert saved["degraded_link_id"] == "s1-s3"
+    assert "s1-s2" in saved["link_metrics"], "metrics for a candidate's links must be recorded"
+    assert saved["link_metrics"]["s1-s2"]["utilization"] == 0.2
+    assert saved["degradation_probs"]["s1-s2"] == 0.4

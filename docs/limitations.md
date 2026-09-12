@@ -333,6 +333,61 @@ sim-to-real gap on top of the queueing-delay one documented above, and
 should be stated in the technical paper's RL methodology section
 alongside it.
 
+## RETRACTED: the E6 conclusion below is not supported by the evidence
+
+**The section that follows is kept for the record but its conclusion is
+withdrawn (2026-09-12).** It states that the learned policy routes worse
+than the hand-tuned formula. That may be true, but this project cannot
+currently demonstrate it, and the claim should not appear in the paper
+in either direction until it can.
+
+**What broke the argument.** The E6 conclusion was built from each
+trial's `final_path` and its aggregate throughput. Two checks undermined
+it:
+
+1. **Replaying a real decision offline inverted the result.** Taking one
+   recorded reroute (E6_P2_ML_RL_gradual_degradation_seed3, the move onto
+   the 5 Mbit path) and feeding the metrics measured at that moment to
+   both selectors: the *heuristic* picked the 5 Mbit path (cost 18.8,
+   its lowest) and the *RL* picked the 10 Mbit path. That is the exact
+   opposite of what each did live.
+2. **`final_path` is not a decision.** That trial made FOUR reroutes --
+   10 Mbit, then 8, then 5, then back to 10 -- and `final_path` recorded
+   only where it happened to stop when the measurement was taken. An
+   aggregate over stopping points is not a measure of decision quality.
+   (The oscillation itself is a real finding, and E4 is the experiment
+   for it.)
+
+Either the live selector saw different inputs from the ones
+reconstructable from the database, or the offline replay misstates the
+state it builds. **Both explanations are consistent with the record, and
+they imply opposite fixes**, so no conclusion can be drawn.
+
+Also corrected here: an intermediate diagnosis that the training load was
+at fault (a fixed 4 Mbit demand, below every path capacity, so wider
+paths earned no reward) was **tested and disproved**. Retraining with the
+demand randomised over 2-12 Mbit produced a policy with a LOWER recovery
+rate on the same evaluation (0.28 vs 0.84), and a direct probe showed
+both the old and the new policy choosing the 10 Mbit path in 60 of 60
+simulated reroutes. The training load was never the problem. That change
+was reverted and the original policy restored.
+
+**What was done about it.** `route_changes` now carries
+`decision_inputs_json`: the candidate set, the per-link metrics, the
+degradation probabilities, the degraded link and the current path --
+recorded at the moment of every decision, next to what was chosen. E6
+will be re-run once that data exists, and the question answered from the
+record instead of from a reconstruction. A schema column is a small
+price for the difference between "the policy chose badly" and "the
+policy was shown something different", which is otherwise invisible.
+
+**Sixth instance of the recurring root cause, with a twist.** The first
+five were measurements taken under conditions that did not match what
+was claimed. This one is a measurement that could not be *interpreted*
+at all, because the system did not record what it was reacting to. The
+lesson for the paper is the same in both cases: an experiment must
+capture its own inputs, not just its outputs.
+
 ## E6 result: the learned policy is WORSE than the hand-tuned formula
 
 With the hold action masked (previous entry), the RL made all 9 of P2's
