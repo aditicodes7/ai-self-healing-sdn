@@ -333,6 +333,35 @@ sim-to-real gap on top of the queueing-delay one documented above, and
 should be stated in the technical paper's RL methodology section
 alongside it.
 
+## E5 was never an ablation, and the VM-crash explanation was wrong
+
+Two corrections.
+
+**E5 did not test its own claim.** E5 exists to show the persistence and
+stability layer is load-bearing, which requires running with the gates
+and without them. Nothing in the runner implemented the ablation, so all
+five trials of the first batch (ids 339-343) used the default gates.
+Five more ordinary P2 trials cannot say anything about what happens when
+you remove something. `--ablate-gates` now sets
+`persistence.consecutive=1` and zeroes the stability cooldown, route
+hold-down and minimum-improvement threshold, and tags those trials
+`_nogates` so the two arms cannot be averaged together.
+
+All four settings have to change. Leaving any one of them in place still
+brakes the loop and would understate the effect of removing the layer --
+which is the failure mode that makes an ablation look inconclusive when
+it is merely incomplete.
+
+**The VM crash was NOT caused by gate-free flapping.** Earlier in the day
+the VM died hard during an E5 run (no clean shutdown, last kernel message
+`htb: too many events!`), and this file and `chain.sh` recorded the
+hypothesis that E5's disabled gates were stressing the kernel queueing
+discipline. That explanation cannot be right: the gates were never
+disabled in that run, for the reason above. The crash remains
+unexplained, and E5 later completed normally with the same configuration,
+so it was not reproducible either. Recorded as unexplained rather than
+left with a tidy story that happens to be false.
+
 ## E8 RESOLVED: both safety criteria now demonstrated directly
 
 Re-run 2026-09-12 with the evidence fields in place (ids 344-348). The

@@ -67,12 +67,33 @@ def log(msg: str) -> None:
     print(f"[exp {time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
-def _write_trial_config(trial_dir: Path, system: str, db_path: Path) -> Path:
+def _write_trial_config(
+    trial_dir: Path, system: str, db_path: Path, ablate_gates: bool = False
+) -> Path:
     """Materialise the exact config this trial ran under, so a result can
-    always be traced back to the settings that produced it."""
+    always be traced back to the settings that produced it.
+
+    `ablate_gates` is E5's second arm. E5 claims the persistence and
+    stability layer is load-bearing, which can only be shown by running
+    with it and without it -- and the first E5 batch ran neither, because
+    nothing here implemented the ablation and all five trials used the
+    default gates. Five more ordinary trials cannot support a claim about
+    what happens when you remove something.
+
+    Removing the layer means: act on a single prediction instead of three
+    consecutive ones, and drop the three brakes on rerouting -- the
+    cooldown between reroutes, the hold-down that keeps a new route in
+    place, and the minimum improvement a candidate must offer to be worth
+    switching to.
+    """
     base = yaml.safe_load((REPO_ROOT / "config" / "config.yaml").read_text())
     base["experiment"]["system"] = system
     base["database"]["path"] = str(db_path)
+    if ablate_gates:
+        base["persistence"]["consecutive"] = 1
+        base["stability"]["cooldown_s"] = 0
+        base["stability"]["route_hold_s"] = 0
+        base["stability"]["min_improvement"] = 0.0
     out = trial_dir / "config.yaml"
     out.write_text(yaml.safe_dump(base, sort_keys=False))
     return out
@@ -226,16 +247,21 @@ def _timeline_from_db(
 
 
 def run_trial(experiment_id: str, system: str, fault_type: str, seed: int,
-              results_root: Path, kill_service_mid_run: bool = False) -> dict:
+              results_root: Path, kill_service_mid_run: bool = False,
+              ablate_gates: bool = False) -> dict:
     cfg = load_config()
-    trial_id = f"{experiment_id}_{system}_{fault_type}_seed{seed}"
+    # The suffix keeps the two E5 arms apart in the shared results
+    # database and in every table built from it -- without it the
+    # ablation would be averaged into the control.
+    suffix = "_nogates" if ablate_gates else ""
+    trial_id = f"{experiment_id}_{system}_{fault_type}_seed{seed}{suffix}"
     trial_dir = results_root / trial_id
     if trial_dir.exists():
         shutil.rmtree(trial_dir)
     trial_dir.mkdir(parents=True)
 
     db_path = trial_dir / "network.db"
-    trial_config = _write_trial_config(trial_dir, system, db_path)
+    trial_config = _write_trial_config(trial_dir, system, db_path, ablate_gates=ablate_gates)
 
     log(f"=== {trial_id} ===")
     started_at = time.time()
@@ -390,6 +416,9 @@ def main() -> int:
     parser.add_argument("--faults", nargs="+", help="override the experiment's faults")
     parser.add_argument("--pilot", action="store_true",
                         help="smallest useful check: E1, B1 vs P2, one seed")
+    parser.add_argument("--ablate-gates", action="store_true",
+                        help="E5's second arm: persistence.consecutive=1 and the "
+                             "stability cooldown/hold/min-improvement zeroed")
     args = parser.parse_args()
 
     results_root = REPO_ROOT / "results" / "raw" / "experiments"
@@ -412,7 +441,8 @@ def main() -> int:
     records = []
     for experiment_id, system, fault, seed in combos:
         records.append(run_trial(experiment_id, system, fault, seed, results_root,
-                                 kill_service_mid_run=(experiment_id == "E8")))
+                                 kill_service_mid_run=(experiment_id == "E8"),
+                                 ablate_gates=args.ablate_gates))
 
     print()
     log("SUMMARY")
