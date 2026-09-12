@@ -137,6 +137,33 @@ def summarize(records: list[dict]) -> dict:
     }
 
 
+def _variant_of(trial_id: str, experiment_id: str, system: str) -> str:
+    """The arm of the experiment this trial belongs to, or "" for the
+    default arm.
+
+    E5's ablation and E7's load levels are recorded only as a trial-id
+    suffix (`_nogates`, `_bg6`) -- the `system` column is P2_ML_RL for
+    every one of them. Grouping by that column alone silently averaged
+    E5's two arms into a single row reading 2.40 reroutes, the midpoint
+    of a control at 0.6 and an ablation at 4.2, describing neither and
+    hiding the entire result. The variant has to be part of the key.
+    """
+    prefix = f"{experiment_id}_{system}_"
+    if not trial_id.startswith(prefix):
+        return ""
+    _, sep, tail = trial_id[len(prefix):].rpartition("_seed")
+    if not sep:
+        return ""
+    # tail is the seed number plus any variant suffix: "3", "3_nogates".
+    digits = ""
+    for ch in tail:
+        if ch.isdigit():
+            digits += ch
+        else:
+            break
+    return tail[len(digits):]
+
+
 def _fault_of(trial_id: str, experiment_id: str, system: str) -> str | None:
     """Recover the fault type from a trial id.
 
@@ -239,10 +266,15 @@ def main() -> int:
         except (ValueError, TypeError):
             continue
         exp_id, system = row["experiment_id"], row["system"]
-        grouped.setdefault((exp_id, system), []).append(rec)
-        fault = _fault_of(rec.get("trial_id") or "", exp_id, system)
+        trial_id = rec.get("trial_id") or ""
+        # Arms of the same experiment (E5's ablation, E7's load levels)
+        # share a `system` value and must not be pooled -- see
+        # _variant_of.
+        arm = system + _variant_of(trial_id, exp_id, system)
+        grouped.setdefault((exp_id, arm), []).append(rec)
+        fault = _fault_of(trial_id, exp_id, system)
         if fault:
-            by_fault.setdefault((exp_id, system, fault), []).append(rec)
+            by_fault.setdefault((exp_id, arm, fault), []).append(rec)
 
     output = {
         "generated_at": time.time(),

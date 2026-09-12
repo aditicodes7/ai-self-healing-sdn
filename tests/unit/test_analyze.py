@@ -126,3 +126,32 @@ def test_verification_outcomes_are_tallied():
     s = summarize([_trial(verification="SUCCESS"), _trial(verification="FAILED")])
     assert s["verification_outcomes"]["SUCCESS"] == 1
     assert s["verification_outcomes"]["FAILED"] == 1
+
+
+def test_experiment_arms_are_not_pooled_into_one_row():
+    """E5's ablation and E7's load levels share a `system` value.
+
+    They are distinguished only by a trial-id suffix, so grouping on the
+    database's system column alone averaged E5's control (0.6 reroutes)
+    with its ablation (4.2) into a single row reading 2.40 -- a number
+    describing neither arm, which hid the entire result.
+    """
+    from experiments.analyze import _variant_of
+
+    assert _variant_of("E5_P2_ML_RL_gradual_degradation_seed3", "E5", "P2_ML_RL") == ""
+    assert _variant_of(
+        "E5_P2_ML_RL_gradual_degradation_seed3_nogates", "E5", "P2_ML_RL"
+    ) == "_nogates"
+    assert _variant_of("E7_P2_ML_RL_congestion_seed10_bg6", "E7", "P2_ML_RL") == "_bg6"
+    # A two-digit seed must not eat into the suffix.
+    assert _variant_of("E7_P2_ML_RL_congestion_seed12", "E7", "P2_ML_RL") == ""
+
+
+def test_fault_type_survives_a_variant_suffix():
+    """The fault must still parse when an arm suffix follows the seed,
+    or per-fault breakdowns silently lose every ablation trial."""
+    from experiments.analyze import _fault_of
+
+    assert _fault_of(
+        "E5_P2_ML_RL_gradual_degradation_seed3_nogates", "E5", "P2_ML_RL"
+    ) == "gradual_degradation"
