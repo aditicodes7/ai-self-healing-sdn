@@ -333,6 +333,39 @@ sim-to-real gap on top of the queueing-delay one documented above, and
 should be stated in the technical paper's RL methodology section
 alongside it.
 
+## Phase 28: the documented trial count was stale, and the first check missed it
+
+`scripts/verify_reproducibility.py` re-derives the analysis from
+`experiments.db`, regenerates every figure, and checks that each headline
+number quoted in `docs/` and `README.md` matches the artefact it came
+from. That last check found a real error on its first honest run: every
+document said **181 trials**. The true total is **206**. The figure was
+correct when written and went stale when E5's ablation arm (5 trials) and
+E7's load sweep (20 trials) were added.
+
+Nothing else in the pipeline could have caught it. A stale number reads
+as a perfectly plausible number.
+
+**The first version of the check was worthless, and a negative test is
+what proved it.** It asked whether the correct value appeared *somewhere*
+in the corpus. Deliberately corrupting E5's ablated reroute count from
+4.2 to 4.9 across the documents did **not** fail it, because one line the
+edit missed still carried 4.2 and satisfied the search. The check now
+captures every statement of a quantity and requires all of them to match,
+and the same corruption fails it immediately.
+
+The lesson is the seventh instance of this project's recurring pattern,
+now applied to its own tooling: **a check that has never been observed to
+fail has not been shown to work.** Verification code needs a negative
+test as much as the system it verifies.
+
+One further trap, recorded because it cost time: the second pattern
+written for E3's detection latencies matched every "X vs Y" comparison in
+the corpus -- recovery times, throughput percentages -- and reported eight
+unrelated numbers as errors. A validity check that is too broad produces
+false alarms, which are as corrosive to trust as missed errors. It is now
+anchored on the sentence that actually states the comparison.
+
 ## E5 ANSWERED: the persistence and stability layer is load-bearing
 
 Run properly for the first time on 2026-09-12, with the ablation arm the
