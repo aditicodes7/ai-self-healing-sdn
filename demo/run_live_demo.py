@@ -234,6 +234,17 @@ def main() -> int:
         )
         time.sleep(5)
 
+        # Clear any Mininet state a previous run left behind. Interfaces
+        # and namespaces survive a demo that was killed rather than
+        # stopped with Ctrl+C, and the next run then dies on
+        # "Error creating interface pair (h1-eth0,s1-eth1): File exists"
+        # -- a confusing message for something with a one-command fix.
+        # Doing it here rather than documenting it means the person
+        # running the demo in front of an audience cannot forget.
+        step("clearing any leftover network state...")
+        subprocess.run(["mn", "-c"], stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL, timeout=120)
+
         step(f"building the network ({topo_name})...")
         spec = load_topology_spec(topo_name)
         net = build_network(spec, "127.0.0.1", cfg.controller.of_listen_port, fail_mode="secure")
