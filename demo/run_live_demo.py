@@ -161,6 +161,9 @@ def _start_background_traffic(net, duration_s: float) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--topo", default=None, help="topology name (default: from config)")
+    parser.add_argument("--manual", action="store_true",
+                        help="settle first, then wait for Enter before injecting "
+                             "-- lets you choose the moment in front of an audience")
     parser.add_argument("--fault-after", type=float, default=90.0,
                         help="seconds to settle before injecting; 0 waits for Enter")
     parser.add_argument("--fault-type", default="gradual_degradation")
@@ -291,8 +294,15 @@ def main() -> int:
             step(f"letting telemetry settle for {args.fault_after:.0f}s before breaking anything")
             step("(the model reads TRENDS, so it needs a stable baseline first)")
             time.sleep(args.fault_after)
-        else:
-            log("\n  Press Enter to break a link...")
+        if args.manual or args.fault_after <= 0:
+            # Settle first, THEN hand over the trigger. `--fault-after 0`
+            # alone skips the settle entirely, which is the wrong thing to
+            # do before a live audience: the model reads trends, so
+            # breaking a link two seconds after startup asks it to detect
+            # a change from a baseline it has not established. --manual
+            # keeps the settle and lets you choose the moment.
+            log("")
+            log("  Settled. Press Enter to break a link...")
             input()
 
         switches = active_path.split(",")
