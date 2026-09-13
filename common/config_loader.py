@@ -220,6 +220,31 @@ def _get(d: dict, key: str, section: str) -> Any:
     return d[key]
 
 
+def resolve_venv_ctrl() -> Path:
+    """Where the Ryu controller's Python 3.9 environment lives.
+
+    Both the experiment runner and the live demo start the controller as
+    root (Mininet needs it), and under sudo `Path.home()` is /root -- not
+    the account the environment was actually created under. The runner
+    only worked because its launcher script exported VENV_CTRL; running
+    the demo directly, as its own docstring tells you to, failed with
+    FileNotFoundError on /root/venv-ctrl-.../bin/python3.9.
+
+    Resolution order: an explicit VENV_CTRL, then the home of the user
+    who invoked sudo, then the current user's home.
+    """
+    explicit = os.environ.get("VENV_CTRL")
+    if explicit:
+        return Path(explicit)
+    sudo_user = os.environ.get("SUDO_USER")
+    if sudo_user:
+        home = Path(os.path.expanduser(f"~{sudo_user}"))
+        candidate = home / "venv-ctrl-ai-self-healing-sdn"
+        if candidate.exists():
+            return candidate
+    return Path.home() / "venv-ctrl-ai-self-healing-sdn"
+
+
 def load_config(path: str | Path | None = None) -> Config:
     """Resolution order: explicit `path`, then the AI_SDN_CONFIG
     environment variable, then config/config.yaml.

@@ -34,14 +34,14 @@ if str(REPO_ROOT) not in sys.path:
 
 import yaml  # noqa: E402
 
-from common.config_loader import load_config  # noqa: E402
+from common.config_loader import load_config, resolve_venv_ctrl  # noqa: E402
 from database.db import Database  # noqa: E402
 from experiments.definitions import by_id  # noqa: E402
 from network.failure_injector import FailureInjector  # noqa: E402
 from network.topo_builder import build_network, load_topology_spec  # noqa: E402
 
 VENV_ML = Path(os.environ.get("VENV_ML", REPO_ROOT / "venv-ml"))
-VENV_CTRL = Path(os.environ.get("VENV_CTRL", Path.home() / "venv-ctrl-ai-self-healing-sdn"))
+VENV_CTRL = resolve_venv_ctrl()
 
 SETTLE_BEFORE_FAULT_S = 90   # matches tests/e2e; startup transient inverts latency trends
 

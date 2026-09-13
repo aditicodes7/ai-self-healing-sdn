@@ -129,3 +129,29 @@ def test_malformed_uncertainty_band_raises(tmp_path):
     bad_path.write_text(bad)
     with pytest.raises(ConfigError):
         load_config(bad_path)
+
+
+def test_controller_venv_resolves_under_sudo(tmp_path, monkeypatch):
+    """Mininet needs root, so the controller is always started under
+    sudo -- where Path.home() is /root, not the account the environment
+    was created under.
+
+    The experiment runner only worked because its launcher exported
+    VENV_CTRL. Running the live demo the way its own docstring says to
+    failed with FileNotFoundError on /root/venv-ctrl-.../bin/python3.9.
+    """
+    from common.config_loader import resolve_venv_ctrl
+
+    monkeypatch.delenv("VENV_CTRL", raising=False)
+    monkeypatch.delenv("SUDO_USER", raising=False)
+
+    # An explicit setting always wins.
+    monkeypatch.setenv("VENV_CTRL", str(tmp_path / "explicit"))
+    assert resolve_venv_ctrl() == tmp_path / "explicit"
+
+    # Otherwise the invoking user's environment is preferred over root's,
+    # but only when it actually exists -- an unrelated SUDO_USER must not
+    # send us somewhere that isn't there.
+    monkeypatch.delenv("VENV_CTRL")
+    monkeypatch.setenv("SUDO_USER", "nobody-with-no-venv")
+    assert resolve_venv_ctrl().name == "venv-ctrl-ai-self-healing-sdn"
