@@ -5,6 +5,30 @@ degradation ahead of time, a trained RL policy selects a remediation path,
 the controller installs OpenFlow rules automatically, recovery is measured
 and verified, and the whole loop is shown live on a dashboard.
 
+![The results dashboard](docs/images/dashboard_results.png)
+
+*All eight experiments, their claims and their measured results, on one page.*
+
+## Quick start
+
+```bash
+# Run the test suite — no VM needed
+venv-ml/bin/python -m pytest tests/unit -q           # 284 tests
+
+# Verify every published number re-derives from its artefact
+python3 scripts/verify_reproducibility.py
+
+# Browse the results dashboard — no VM needed
+./show-dashboard.sh                                  # -> http://127.0.0.1:8000
+
+# The live demo — inside the Linux VM, needs Mininet
+sudo python3 demo/run_live_demo.py --fault-after 120 --manual
+```
+
+The demo settles for 120 s and then waits for you to press Enter. The damaged
+link turns orange at ~13 s, the traffic path visibly moves, and the repair is
+verified at ~22 s.
+
 **Current status:** see [PROJECT_STATE.md](PROJECT_STATE.md) for the
 authoritative phase-by-phase status, environment, decisions, and test
 results. This README gives orientation; PROJECT_STATE.md is never stale by
@@ -36,6 +60,24 @@ should be. The two bottom rows are a predicted result, not a surprise: Open
 vSwitch cannot observe `tc netem` loss or corruption on veth links, so those
 features are identically zero and the model has nothing to learn from. E2
 exists to measure that rather than assert it.
+
+## The clearest result: are the safety gates worth anything?
+
+![E5 ablation](docs/images/e5_ablation.png)
+
+Same fault, same topology, same predictions. The only change is acting on one
+prediction instead of three consecutive ones, with the cooldown, hold-down and
+minimum-improvement thresholds removed.
+
+**Removing them multiplies rerouting sevenfold** — 0.6 to 4.2 per run, and the
+two distributions do not overlap: every gated trial rerouted at most once,
+every ablated trial at least three times.
+
+The right-hand panel is the honest other half. Without the gates the system
+detects *more* (5/5 against 3/5). That is the trade they exist to make, not a
+failure of them: requiring three consecutive predictions means some genuine
+faults are missed, and in exchange the system does not act on every
+fluctuation of a classifier whose precision is 0.112.
 
 ## Two hypotheses this project's own experiments falsified
 
@@ -127,3 +169,38 @@ section for the specific setup used on this project.
 
 MIT for the software (see [LICENSE](LICENSE)); patent rights, if pursued,
 are tracked separately in `docs/patent_notes.md`.
+
+---
+
+## Documentation
+
+| document | what it is |
+|---|---|
+| [`docs/architecture.md`](docs/architecture.md) | how the system is put together |
+| [`docs/limitations.md`](docs/limitations.md) | every place emulation stands in for something, and why — including seven measurement-validity failures found during evaluation |
+| [`docs/decisions.md`](docs/decisions.md) | design rationale, dated |
+| [`docs/project_report.md`](docs/project_report.md) | the full project report |
+| [`docs/demo_guide.md`](docs/demo_guide.md) | runbook for demonstrating it live |
+
+## Reproducing the results
+
+Every number in this repository traces to a JSON artefact under
+`results/tables/` produced by an executed run. Discarded runs are **not
+deleted** — they remain in `results/experiments.db` and are listed with the
+reason in [`results/invalidated_runs.json`](results/invalidated_runs.json),
+which the analyser applies by default.
+
+```bash
+venv-ml/bin/python experiments/analyze.py        # re-derive every table
+venv-ml/bin/python experiments/make_figures.py   # regenerate every figure
+python3 scripts/verify_reproducibility.py        # check the docs match the data
+```
+
+That last command exists because several documents quote numbers transcribed
+by hand, and a transcription error reads as a perfectly plausible number. It
+caught one: every document said 181 trials when the true total was 206.
+
+## Licence
+
+No licence is currently specified. This is academic coursework — please get in
+touch before reuse.
