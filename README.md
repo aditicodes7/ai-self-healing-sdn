@@ -13,17 +13,28 @@ and the whole loop is shown live on a dashboard.
 
 ## Quick start
 
+Everything except the live demo runs on macOS, Linux or Windows with no VM
+and no network hardware — the results are committed, so they can be checked
+without re-running a single experiment.
+
 ```bash
-# Run the test suite — no VM needed
+# One-time: create the Python 3.11 environment (venv-ml)
+make setup-ml
+
+# Run the test suite
 venv-ml/bin/python -m pytest tests/unit -q           # 284 tests
 
 # Verify every published number re-derives from its artefact
-python3 scripts/verify_reproducibility.py
+python3 scripts/verify_reproducibility.py            # 4 checks
 
-# Browse the results dashboard — no VM needed
+# Browse the results dashboard on a real recorded incident
 ./show-dashboard.sh                                  # -> http://127.0.0.1:8000
+```
 
-# The live demo — inside the Linux VM, needs Mininet
+The live demo needs a real Linux kernel and root, because Mininet and Open
+vSwitch do. Inside the VM (see [Setup](#setup)):
+
+```bash
 sudo python3 demo/run_live_demo.py --fault-after 120 --manual
 ```
 

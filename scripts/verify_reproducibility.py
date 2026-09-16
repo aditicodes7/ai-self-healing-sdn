@@ -212,6 +212,13 @@ def check_documented_numbers() -> None:
 
 def main() -> int:
     print("Phase 28 -- reproducibility review\n" + "=" * 52)
+    if not VENV.exists():
+        print(f"venv-ml not found at {VENV.relative_to(ROOT)}.\n"
+              "This check re-runs the test suite, the analysis and the figure\n"
+              "generation, so it needs the project environment:\n\n"
+              "    make setup-ml\n\n"
+              "then run this again.")
+        return 1
     check_tests()
     check_analysis_is_reproducible()
     check_figures()
