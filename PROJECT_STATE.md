@@ -33,13 +33,10 @@ Decisions recorded here are settled and are not revisited.
 
 ## Current phase
 
-**Phase 21 — COMPLETE (with a measured caveat).** The closed loop runs
-end to end against a live network: fault -> detect -> reroute (RL) ->
-verify -> incident closed SUCCESS, in ~18s. Verified on 3 consecutive
-live runs; **2 of 3 passed**, the third opened no incident. That
-reliability figure is NOT yet a claim -- 3 runs is far too small a
-sample, and Phase 22 is where it gets measured across >=5 seeds. Next:
-Phase 22 (the 8 experiments).
+**Complete.** All eight experiments are measured (206 valid trials), every
+figure and dashboard table is generated from those artefacts, and
+`scripts/verify_reproducibility.py` re-derives every published number from
+the run that produced it — 4/4 checks, 36 statements across 10 documents.
 
 ## Completed components
 
@@ -785,14 +782,16 @@ tests** (all in docs/decisions.md):
 
 ## Pending components
 
-Phase 22 onward: the 8 experiments (>=5 seeds each), figures, README/
-architecture docs, technical paper + project report, presentation +
-demo guide, patent documentation, and the final reproducibility review.
+None. Work deliberately not pursued, with the reason:
 
-Phase 22 is now unblocked: it needs a whole working system to measure,
-and as of Phase 21 there is one. It is also where the closed loop's
-detection reliability gets a real number (see docs/limitations.md --
-the 2-of-3 observed in Phase 21 is an observation, not a result).
+- **Physical-hardware validation.** Mininet/OVS emulation only; every
+  dataset is labelled `emulated_mininet` and never described as production
+  traffic.
+- **Packet loss and corruption detection.** Open vSwitch cannot observe
+  `tc netem` loss or corruption on veth links, so those features are
+  identically zero. Measured in E2 (20% and 0%) rather than asserted away.
+- **End-to-end throughput attribution for the RL policy.** Confounded on a
+  six-switch topology where the shortest path is also the narrowest.
 
 ## Known issues
 
@@ -808,7 +807,7 @@ horizon 10s, verify settle 8s. `project.controller_backend: ryu`.
 
 ## Test status
 
-243/243 unit tests passing (`test_config.py`, `test_db.py`, `test_logging.py`,
+284/284 unit tests passing, run in CI on every push (`test_config.py`, `test_db.py`, `test_logging.py`,
 `test_of_compat.py`, `test_features.py`, `test_failure_injector.py`,
 `test_ml_rl_service.py`, `test_path_computer.py`, `test_persistence_tracker.py`,
 `test_stability_manager.py`, `test_flow_manager.py`, `test_remediation_manager.py`,
@@ -851,21 +850,20 @@ whenever main_app.py first wires RemediationManager in for real).
 
 ## Experiment status
 
-Phase 22 in progress. Valid batches are selected explicitly by run id;
-superseded ones stay in `results/experiments.db` and are listed with
-their reason in `results/invalidated_runs.json`, which `analyze.py`
-applies by default.
+All eight measured; 206 valid trials. Superseded batches stay in
+`results/experiments.db` and are listed with their reason in
+`results/invalidated_runs.json`, which `analyze.py` applies by default.
 
 | | status | result |
 |---|---|---|
 | E1 | measured, ids 1-23 | B2 (reactive threshold) beats the full system on this fault. Reported, not hidden. |
 | E2 | measured, ids 123-182 | Per fault: link failure 100%, gradual degradation 100%, congestion 80%, high latency 60%, packet loss 20%, rising errors 0%. Static routing 0/29. |
 | E3 | measured, ids 183-202 | **Falsifies the lead-time claim.** P2 is not earlier than B2; it detects MORE (70% vs 40% in-fault). See docs/limitations.md. |
-| E4 | not started | 30 trials |
-| E5 | not started | 5 trials |
-| E6 | RUNNING (started 2026-09-11 13:19) | 30 trials; the remaining justification for the RL half |
-| E7 | not started | 10 trials |
-| E8 | not started | 5 trials |
+| E4 | measured | Reroutes per run under a steady fault: B2 1.80, P1 0.80, P2 0.60. Stability is where the gated system separates from the reactive one. |
+| E5 | measured, ids 339-343 | **Gate ablation.** 0.60 -> 4.20 reroutes per run with the gates removed; distributions do not overlap. Detection goes the other way, 60% -> 100%: the trade the gates exist to make. |
+| E6 | measured | **Decision quality by replay.** P2: 44 decisions, 33 disagreements, chose wider 24 vs narrower 3. P1 control agreed with the formula 31/31, which validates the replay. |
+| E7 | measured | **Load sweep**, background 0/1/6 Mbit. P2 detection 40%/40%/60%; static control 0% at every load. |
+| E8 | measured, ids 344-348 | **Degrades safely.** ML service killed mid-run: 0 predictions after the kill in 5/5 trials; one trial recorded an explicit `rl_service_unavailable` fallback. |
 
 Three code defects were found BY these experiments, not by development:
 the predictor's structural blindness to a hard link failure (fixed with
@@ -875,14 +873,9 @@ metric that counted reactions to a fault's REMOVAL as detections.
 
 ## Documentation status
 
-`docs/decisions.md` and `docs/limitations.md` initialized and current.
-`docs/limitations.md` now also carries the four-instance record of this
-project's one recurring root cause -- a measurement taken under
-conditions that did not match the conditions being claimed -- which
-belongs in the paper's threats-to-validity section as a pattern rather
-than as four separate mishaps.
-`docs/architecture.md` not yet started (later phases).
-
-## Patent documentation status
-
-Not pursued.
+`docs/architecture.md`, `docs/decisions.md` and `docs/limitations.md` are
+written and current. `docs/limitations.md` carries the record of this
+project's one recurring root cause -- a measurement taken under conditions
+that did not match the conditions being claimed -- as a single pattern
+rather than as separate mishaps, which is where it belongs in a
+threats-to-validity section.

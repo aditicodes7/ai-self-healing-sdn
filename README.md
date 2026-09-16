@@ -94,15 +94,23 @@ during the fault, where 6 of the baseline's 10 were reactions to the fault
 being removed. That is a real advantage, but it is a different claim, and
 substituting it silently would be a retrofitted hypothesis.
 
-**"The learned routing policy beats the hand-tuned formula."** Currently
-**unproven in both directions**. The first E6 run was invalid — the policy
-declined to act in 7 of 11 selections and the heuristic decided instead, so
-the experiment largely compared the formula against itself. After fixing
-that, an offline replay of a recorded decision contradicted what the live
-system did, which meant the run could not be interpreted at all. The system
-now records the exact inputs behind every routing decision
-(`route_changes.decision_inputs_json`) and E6 is being re-run against that
-record.
+**"The learned routing policy beats the hand-tuned formula."**
+**Retracted, then answered on narrower terms.** The first E6 run was invalid
+— the policy declined to act in 7 of 11 selections and the heuristic decided
+instead, so the experiment largely compared the formula against itself. After
+fixing that, an offline replay of a recorded decision contradicted what the
+live system did, which meant the run could not be interpreted at all. The
+system now records the exact inputs behind every routing decision
+(`route_changes.decision_inputs_json`), and E6 was re-run against that
+record: across **44** decisions the policy disagreed with the formula 33
+times, choosing the **higher-capacity path 24 times against 3 narrower**. The
+control arm — the formula replayed against its own inputs — agreed **31 of
+31** times, which is what makes the replay trustworthy at all.
+
+What stays unproven is that this converts into better end-to-end throughput.
+On this topology the shortest path is also the narrowest, so any reroute
+gains capacity and the metric is confounded. The claim the evidence supports
+is about decision quality, not outcome.
 
 Six separate instances of one recurring root cause — a measurement taken
 under conditions that did not match what was claimed — were found and
