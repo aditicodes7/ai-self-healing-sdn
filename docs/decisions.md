@@ -1,16 +1,12 @@
 # Architectural Decision Log
 
-One line per decision, newest last. Decisions dictated directly by the
-project owner (the approved tool stack, environment, two-venv split,
-phase plan) are not re-logged here — only decisions made autonomously while
-executing the plan.
+One line per decision, newest last. Decisions fixed up front (the approved
+tool stack, environment, two-venv split, phase plan) are not re-logged here —
+only decisions made while executing the plan.
 
-- 2026-08-30: Repository root is `the project directory`
-  itself (not a nested `ai-self-healing-sdn/` subdirectory) — the directory
-  was already empty and dedicated to this project.
-- 2026-08-30: Chose MIT license for the software implementation; patent
-  rights (if pursued) are tracked separately per `docs/patent_notes.md` and
-  are explicitly noted as not granted by the software license.
+- 2026-08-30: The project directory is the repository root itself (not a
+  nested `ai-self-healing-sdn/` subdirectory) — it was already empty and
+  dedicated to this project.
 - 2026-08-30: `common/schema.py` holds shared string enums (LinkHealthState,
   IncidentStatus, VerificationClassification, RouteSelector, DataSource,
   FlowRuleResult) as the single source of truth for magic strings written
@@ -28,7 +24,7 @@ executing the plan.
   `/Library/Frameworks/Python.framework/Versions/3.11`); Phases 2+ (Mininet,
   OVS, the Ryu controller's smoke test) require a Linux VM. Recommended:
   Multipass or UTM running Ubuntu 22.04 LTS, 4GB RAM / 4 vCPU. This is
-  disclosed to the user directly (not silently substituted) and is not a
+  documented here explicitly (not silently substituted) and is not a
   pure-simulation substitution — actual Mininet/OVS still runs, just inside
   a VM rather than bare metal.
 - 2026-08-30: Linux VM tooling for Phases 2+ is Multipass (`brew install

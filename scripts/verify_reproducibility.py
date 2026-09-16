@@ -186,7 +186,7 @@ def claims() -> list[tuple[str, object, str]]:
 
 
 def check_documented_numbers() -> None:
-    docs = [p for p in (ROOT / "docs").glob("*.md")] + [ROOT / "README.md"]
+    docs = sorted((ROOT / "docs").rglob("*.md")) + [ROOT / "README.md"]
     corpus = "\n".join(p.read_text(encoding="utf-8", errors="ignore")
                        for p in docs if p.exists())
 

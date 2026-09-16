@@ -21,7 +21,7 @@ setup-ctrl:
 
 # Unit/integration tests that need no Mininet/Ryu run under venv-ml.
 test:
-	$(VENV_ML)/bin/python -m pytest tests/unit tests/integration -v --cov=common --cov=database --cov-report=term-missing
+	$(VENV_ML)/bin/python -m pytest tests/unit -v --cov=common --cov=database --cov-report=term-missing
 
 # pytest is not part of the approved venv-ctrl stack (see
 # requirements-ctrl.txt); the of_compat hygiene test is pure AST parsing

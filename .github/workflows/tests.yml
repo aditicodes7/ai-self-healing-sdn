@@ -1,0 +1,33 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  unit:
+    name: unit suite (Python 3.11)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: requirements-ml.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-ml.txt
+
+      # The controller, Mininet and Open vSwitch need a real Linux kernel and
+      # root, so the data-plane tests are not run here. This job covers the
+      # parts that are pure Python: feature extraction, the safety gates, the
+      # RL action masking, the database layer and the API.
+      - name: Run unit tests
+        run: python -m pytest tests/unit -v --cov=common --cov=database --cov-report=term-missing

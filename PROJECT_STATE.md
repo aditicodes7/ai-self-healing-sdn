@@ -1,13 +1,13 @@
 # PROJECT_STATE
 
 Authoritative status. Updated every phase boundary, same commit as the code.
-Never re-ask anything recorded here.
+Decisions recorded here are settled and are not revisited.
 
-## Environment (asked once, 2026-08-30 — do not re-ask)
+## Environment (fixed 2026-08-30)
 
 - **OS:** macOS 14.5 (Darwin 23.5.0), Apple Silicon-class Homebrew at
   `/opt/homebrew`. Not Linux — cannot run Mininet/OVS natively.
-- **Sudo:** yes, user `the development account` is in the `admin` group (sudo-capable).
+- **Sudo:** yes, the development account is sudo-capable.
 - **RAM / cores:** 8 GB RAM / 8 cores.
 - **Python already available on the dev machine:** `python3.11` at
   `/Library/Frameworks/Python.framework/Versions/3.11/bin/python3.11`
@@ -59,7 +59,7 @@ Phase 22 (the 8 experiments).
 - `database/db.py` — WAL-mode sqlite3 connection helper, `init_schema()`,
   `Database` context manager with generic `insert`/`query`/`execute`.
 - `pytest.ini`, `Makefile`, `requirements-ctrl.txt`, `requirements-ml.txt`,
-  `.gitignore`, `README.md`, `LICENSE` (MIT), `docs/decisions.md`,
+  `.gitignore`, `README.md`, `docs/decisions.md`,
   `docs/limitations.md`.
 
 **Phase 2 — env setup, GO/NO-GO smoke test, of_compat:**
@@ -881,10 +881,8 @@ project's one recurring root cause -- a measurement taken under
 conditions that did not match the conditions being claimed -- which
 belongs in the paper's threats-to-validity section as a pattern rather
 than as four separate mishaps.
-`docs/architecture.md`, `technical_paper.md`, `project_report.md`,
-`presentation.md`, `demo_guide.md` not yet started (later phases).
+`docs/architecture.md` not yet started (later phases).
 
 ## Patent documentation status
 
-Not started (Phase 27). `docs/patent_notes.md` and
-`docs/invention_disclosure.md` do not exist yet.
+Not pursued.

@@ -1,5 +1,7 @@
 # AI-Driven Self-Healing Software-Defined Network
 
+[![tests](https://github.com/aditicodes7/ai-self-healing-sdn/actions/workflows/tests.yml/badge.svg)](https://github.com/aditicodes7/ai-self-healing-sdn/actions/workflows/tests.yml)
+
 A closed-loop self-healing SDN: an ML model predicts link degradation ahead
 of time, a trained RL policy selects a remediation path, the controller
 installs OpenFlow rules automatically, recovery is measured and verified,
@@ -177,5 +179,5 @@ caught one: every document said 181 trials when the true total was 206.
 
 ## Licence
 
-No licence is currently specified. This is academic coursework — please get in
-touch before reuse.
+No licence is currently specified. All rights reserved — please get in touch
+before reusing any part of this.

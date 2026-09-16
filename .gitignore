@@ -26,10 +26,5 @@ models_matched/*.joblib
 *.db-wal
 *.db-shm
 
-# Personal preparation material — kept locally, never published
-docs/viva_guide.*
-docs/interview_guide.*
-docs/viva_cheatsheet.*
-docs/demo_guide.*
-docs/presentation.*
-docs/project_report.*
+# Local-only working material, never published
+docs/personal/

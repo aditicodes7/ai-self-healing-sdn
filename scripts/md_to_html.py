@@ -12,7 +12,7 @@ outside that is passed through as text rather than half-rendered, so a
 missing feature shows up as visibly wrong instead of quietly wrong.
 
 Usage:
-    python3 scripts/md_to_html.py docs/project_report.md out.html "Title"
+    python3 scripts/md_to_html.py docs/architecture.md out.html "Title"
 """
 from __future__ import annotations
 
