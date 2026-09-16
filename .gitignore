@@ -25,3 +25,10 @@ models_matched/*.joblib
 # when it closes cleanly. Committing them would check in a lock file.
 *.db-wal
 *.db-shm
+
+# Personal preparation material — kept locally, never published
+docs/viva_guide.*
+docs/interview_guide.*
+docs/viva_cheatsheet.*
+docs/demo_guide.*
+docs/presentation.*

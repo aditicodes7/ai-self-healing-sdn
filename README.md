@@ -151,36 +151,12 @@ section for the specific setup used on this project.
 
 ## Documentation
 
-- [docs/architecture.md](docs/architecture.md) — system design, every
-  telemetry/feature formula
-- [docs/decisions.md](docs/decisions.md) — architectural decision log
-- [docs/limitations.md](docs/limitations.md) — honest limitations and why
-- [docs/technical_paper.md](docs/technical_paper.md) — paper draft (measured
-  numbers only)
-- [docs/project_report.md](docs/project_report.md) — university evaluation
-  report
-- [docs/demo_guide.md](docs/demo_guide.md) — exact commands for a live demo
-- [docs/patent_notes.md](docs/patent_notes.md) — technical documentation for
-  provisional patent review (not a legal patentability opinion)
-- [docs/invention_disclosure.md](docs/invention_disclosure.md) — dated
-  factual record of conception/reduction to practice
-
-## License
-
-MIT for the software (see [LICENSE](LICENSE)); patent rights, if pursued,
-are tracked separately in `docs/patent_notes.md`.
-
----
-
-## Documentation
-
 | document | what it is |
 |---|---|
 | [`docs/architecture.md`](docs/architecture.md) | how the system is put together |
 | [`docs/limitations.md`](docs/limitations.md) | every place emulation stands in for something, and why — including seven measurement-validity failures found during evaluation |
 | [`docs/decisions.md`](docs/decisions.md) | design rationale, dated |
 | [`docs/project_report.md`](docs/project_report.md) | the full project report |
-| [`docs/demo_guide.md`](docs/demo_guide.md) | runbook for demonstrating it live |
 
 ## Reproducing the results
 
