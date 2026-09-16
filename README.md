@@ -156,7 +156,6 @@ section for the specific setup used on this project.
 | [`docs/architecture.md`](docs/architecture.md) | how the system is put together |
 | [`docs/limitations.md`](docs/limitations.md) | every place emulation stands in for something, and why — including seven measurement-validity failures found during evaluation |
 | [`docs/decisions.md`](docs/decisions.md) | design rationale, dated |
-| [`docs/project_report.md`](docs/project_report.md) | the full project report |
 
 ## Reproducing the results
 
