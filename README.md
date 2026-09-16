@@ -1,9 +1,9 @@
 # AI-Driven Self-Healing Software-Defined Network
 
-A closed-loop self-healing SDN: an ML model predicts link
-degradation ahead of time, a trained RL policy selects a remediation path,
-the controller installs OpenFlow rules automatically, recovery is measured
-and verified, and the whole loop is shown live on a dashboard.
+A closed-loop self-healing SDN: an ML model predicts link degradation ahead
+of time, a trained RL policy selects a remediation path, the controller
+installs OpenFlow rules automatically, recovery is measured and verified,
+and the whole loop is shown live on a dashboard.
 
 ![The results dashboard](docs/images/dashboard_results.png)
 
