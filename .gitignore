@@ -25,3 +25,6 @@ results/processed/*
 
 # Local-only working material, never published
 docs/personal/
+
+# Local demo helpers, not part of the project
+local/
