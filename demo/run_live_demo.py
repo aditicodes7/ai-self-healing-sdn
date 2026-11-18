@@ -26,6 +26,7 @@ Ctrl+C stops everything and cleans up.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -41,7 +42,7 @@ import yaml  # noqa: E402
 
 from common.config_loader import load_config, resolve_venv_ctrl  # noqa: E402
 from database.db import Database  # noqa: E402
-from network.failure_injector import FailureInjector  # noqa: E402
+from network.failure_injector import FAULT_TYPES, FailureInjector  # noqa: E402
 from network.topo_builder import build_network, load_topology_spec  # noqa: E402
 
 VENV_ML = Path(os.environ.get("VENV_ML", REPO_ROOT / "venv-ml"))
@@ -72,6 +73,140 @@ def log(msg: str = "") -> None:
 
 def step(msg: str) -> None:
     print(f"  [{time.strftime('%H:%M:%S')}] {msg}", flush=True)
+
+
+def current_path(db_path, fallback: str) -> str:
+    """The path traffic is on RIGHT NOW, not the one installed at startup.
+
+    The scripted fault used to break the first hop of whatever path was
+    recorded when the demo started. If the system rerouted during the
+    settle -- which it legitimately does, on real congestion -- the fault
+    then landed on an idle link, nothing needed fixing, and the recovery
+    clock ran from an injection the system had no reason to respond to
+    (observed: 'Recovered in 99.3s' against a ~18s loop).
+    """
+    try:
+        with Database(db_path) as db:
+            row = db.query_one(
+                "SELECT new_path FROM route_changes WHERE changed = 1 "
+                "ORDER BY timestamp DESC LIMIT 1"
+            )
+        if row and row["new_path"]:
+            return row["new_path"]
+    except Exception:
+        pass
+    return fallback
+
+
+def apply_fault_request(cmd: dict, injector, fault_types) -> None:
+    """Apply one dashboard-requested fault, or explain why it was ignored."""
+    link_id = str(cmd.get("link_id", "")).strip()
+    fault_type = str(cmd.get("fault_type", "")).strip()
+    try:
+        duration_s = float(cmd.get("duration_s", 240.0))
+    except (TypeError, ValueError):
+        duration_s = 240.0
+
+    endpoints = link_id.split("-")
+    if len(endpoints) != 2:
+        step(f"ignored a malformed fault request: {cmd!r}")
+        return
+
+    if cmd.get("action") == "recover":
+        # inject() will also call recover() when its duration expires;
+        # doing it twice just reapplies the original link parameters.
+        step(f"RECOVERING {link_id} early, as requested from the dashboard")
+        try:
+            injector.recover(endpoints[0], endpoints[1])
+        except Exception as exc:
+            step(f"could not recover {link_id}: {exc}")
+        return
+
+    if fault_type not in fault_types:
+        step(f"ignored a malformed fault request: {cmd!r}")
+        return
+
+    log()
+    log(BANNER)
+    log(f"  BREAKING {link_id}  ({fault_type})  -- requested from the dashboard")
+    log(f"  It recovers by itself after {duration_s:.0f}s. Nobody touches anything.")
+    log(BANNER)
+    # inject() blocks for the fault's duration and then restores the link,
+    # so it runs on its own thread -- otherwise one break would stop the
+    # poller from accepting the next.
+    threading.Thread(
+        target=injector.inject,
+        args=(endpoints[0], endpoints[1], fault_type, duration_s),
+        daemon=True,
+    ).start()
+
+
+def poll_fault_requests(commands_path, injector, fault_types) -> None:
+    """Watch the backend's JSON-lines queue and apply what appears in it.
+
+    Reads whole-file and tracks how many lines have been handled rather
+    than seeking: the file is a handful of lines per demo, and seek/tell
+    on a text file being appended to by another process is the kind of
+    cleverness that fails once, silently, in front of an audience.
+    """
+    handled = 0
+    while True:
+        try:
+            if commands_path.exists():
+                lines = commands_path.read_text().splitlines()
+                for line in lines[handled:]:
+                    handled += 1
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        apply_fault_request(json.loads(line), injector, fault_types)
+                    except json.JSONDecodeError:
+                        step("ignored an unparseable fault request")
+        except Exception as exc:  # the demo must survive a bad request
+            step(f"fault queue error (continuing): {exc}")
+        time.sleep(1)
+
+
+def narrate_forever(db_path) -> None:
+    """Announce every incident, reroute and verification as it appears.
+
+    The scripted path narrates one fault and stops. Interactive mode can
+    be given any number, so this tracks what it has already reported
+    instead of latching after the first.
+    """
+    seen = {"incidents": 0, "route_changes": 0, "verification_results": 0}
+    opened_at = {}
+    while True:
+        time.sleep(2)
+        try:
+            with Database(db_path) as db:
+                incidents = db.query(
+                    "SELECT * FROM incidents WHERE id > ? ORDER BY id", (seen["incidents"],))
+                reroutes = db.query(
+                    "SELECT * FROM route_changes WHERE id > ? AND changed = 1 ORDER BY id",
+                    (seen["route_changes"],))
+                verifications = db.query(
+                    "SELECT * FROM verification_results WHERE id > ? ORDER BY id",
+                    (seen["verification_results"],))
+        except Exception:
+            continue
+
+        for row in incidents:
+            seen["incidents"] = row["id"]
+            opened_at[row["incident_id"]] = row["opened_at"]
+            step(f"DETECTED  {row['link_id']} -- {row['reason']}")
+        for row in reroutes:
+            seen["route_changes"] = row["id"]
+            who = "the RL policy" if row["selector"] == "P2_ML_RL" else "the heuristic fallback"
+            step(f"REROUTED  {row['old_path']} -> {row['new_path']}  (chosen by {who})")
+        for row in verifications:
+            seen["verification_results"] = row["id"]
+            step(f"VERIFIED  {row['classification']} after {row['retry_count']} retries")
+            started = opened_at.get(row["incident_id"])
+            if started:
+                log(f"  Recovered in {row['timestamp'] - started:.1f}s, with no human involved.")
+            log()
 
 
 def _port_in_use(port: int) -> bool:
@@ -169,6 +304,9 @@ def main() -> int:
     parser.add_argument("--fault-type", default="gradual_degradation")
     parser.add_argument("--fault-duration", type=float, default=600.0)
     parser.add_argument("--no-fault", action="store_true")
+    parser.add_argument("--interactive", action="store_true",
+                        help="inject no fault of its own -- wait for breaks requested from "
+                             "the dashboard, and keep accepting them")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
 
@@ -301,6 +439,31 @@ def main() -> int:
             while True:
                 time.sleep(3600)
 
+        injector = FailureInjector(net, spec, ground_truth_path=str(work / "faults.jsonl"))
+
+        if args.interactive:
+            # Creating the queue is what tells the backend interactive mode
+            # is live, so it must exist before the dashboard asks.
+            commands_path = work / "fault_commands.jsonl"
+            commands_path.write_text("")
+            threading.Thread(
+                target=poll_fault_requests,
+                args=(commands_path, injector, FAULT_TYPES),
+                daemon=True,
+            ).start()
+
+            if args.fault_after > 0:
+                step(f"letting telemetry settle for {args.fault_after:.0f}s")
+                step("(the model reads TRENDS, so it needs a stable baseline first)")
+                time.sleep(args.fault_after)
+            log()
+            log(BANNER)
+            log("  READY. Break any link from the dashboard, as many times as you like.")
+            log("  Nothing happens until you ask for it. Ctrl+C when finished.")
+            log(BANNER)
+            log()
+            narrate_forever(db_path)
+
         if args.fault_after > 0:
             step(f"letting telemetry settle for {args.fault_after:.0f}s before breaking anything")
             step("(the model reads TRENDS, so it needs a stable baseline first)")
@@ -316,7 +479,13 @@ def main() -> int:
             log("  Settled. Press Enter to break a link...")
             input()
 
-        switches = active_path.split(",")
+        # Re-read the path now: the system may have rerouted during the
+        # settle, and breaking the startup path's first hop would then hit
+        # an idle link. See current_path()'s docstring.
+        path_now = current_path(db_path, active_path)
+        if path_now != active_path:
+            step(f"the path moved during the settle: {active_path} -> {path_now}")
+        switches = path_now.split(",")
         sw_a, sw_b = switches[0], switches[1]
         log()
         log(BANNER)
@@ -325,7 +494,6 @@ def main() -> int:
         log(BANNER)
         log()
 
-        injector = FailureInjector(net, spec, ground_truth_path=str(work / "faults.jsonl"))
         threading.Thread(
             target=injector.inject,
             args=(sw_a, sw_b, args.fault_type, args.fault_duration),

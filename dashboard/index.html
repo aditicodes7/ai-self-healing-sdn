@@ -92,6 +92,14 @@
       <p id="topology-empty" class="empty-state" hidden>
         No network map yet. Start the controller against a running topology and this will fill in.
       </p>
+      <div id="break-bar" class="break-bar" hidden>
+        <span class="break-label">Break a link</span>
+        <select id="break-link"><option value="">choose a link…</option></select>
+        <select id="break-fault"></select>
+        <button id="break-go" type="button" disabled>Break it</button>
+        <button id="break-recover" type="button">Recover now</button>
+        <span id="break-status" class="break-status"></span>
+      </div>
     </section>
 
     <section class="panel panel-link-detail">

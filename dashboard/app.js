@@ -96,6 +96,197 @@
     return resp.json();
   }
 
+  // ---- flow animation --------------------------------------------------
+  // Traffic is shown by marching the dashes along the carrying path, and
+  // unhealthy links are pulsed. Both are driven from data the controller
+  // already measured -- the animation only runs where the system says
+  // traffic is, so a stalled path visibly stops moving.
+
+  const FLOW_DASH_STEP = 1.6;      // px of dash travel per frame
+  const PULSE_STATES = ["AT_RISK", "DEGRADED", "FAILED"];
+  let flowOffset = 0;
+  let flowRaf = null;
+
+  function reducedMotion() {
+    return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }
+
+  function animateFlow() {
+    flowRaf = window.requestAnimationFrame(animateFlow);
+    if (!cy) return;
+
+    flowOffset = (flowOffset + FLOW_DASH_STEP) % 1000;
+    cy.edges('edge[carrying="yes"]').forEach((edge) => {
+      // Negative offset moves dashes toward the target end, so a reversed
+      // hop needs the sign flipped to still read as downstream.
+      const sign = edge.data("flowDir") === "reverse" ? 1 : -1;
+      edge.style("line-dash-offset", sign * flowOffset);
+    });
+
+    // One shared sine so every unhealthy link pulses in step rather than
+    // each drifting on its own phase.
+    const pulse = 1 + 0.28 * Math.sin(Date.now() / 140);
+    cy.edges('edge[kind="link"]').forEach((edge) => {
+      if (!PULSE_STATES.includes(edge.data("state"))) return;
+      const base = edge.data("carrying") === "yes" ? 7 : 3;
+      edge.style("width", base * pulse);
+    });
+  }
+
+  function startFlowAnimation() {
+    if (flowRaf !== null || reducedMotion()) return;
+    animateFlow();
+  }
+
+  // ---- break a link ----------------------------------------------------
+  // The control is hidden unless the demo is running in interactive mode,
+  // so there is never a button here that does nothing.
+
+  const BREAK_FAULT_LABEL = {
+    gradual_degradation: "gradual degradation",
+    link_failure: "link failure (cable cut)",
+    congestion: "congestion",
+    high_latency: "high latency",
+    packet_loss: "packet loss",
+    rising_errors: "rising errors",
+  };
+
+  let breakLinkOptions = [];
+
+  /** Rebuild the link dropdown, marking the ones actually carrying traffic.
+   *
+   * Without this the list is eight equal-looking names, and picking an
+   * off-path link produces a correct but invisible result: the controller
+   * logs "degraded link is not on the active path; no action" and nothing
+   * moves, which looks like a broken demo rather than a working one. */
+  function refreshBreakLinks() {
+    const sel = $("break-link");
+    if (!sel || !breakLinkOptions.length) return;
+    const keep = sel.value;
+    const carrying = new Set();
+    for (let i = 0; i < activePath.length - 1; i++) {
+      carrying.add([activePath[i], activePath[i + 1]].sort().join("-"));
+    }
+    sel.innerHTML = '<option value="">choose a link…</option>';
+    const ordered = [
+      ...breakLinkOptions.filter((id) => carrying.has(id)),
+      ...breakLinkOptions.filter((id) => !carrying.has(id)),
+    ];
+    ordered.forEach((id) => {
+      const o = document.createElement("option");
+      o.value = id;
+      o.textContent = carrying.has(id) ? `${id} — carrying traffic` : `${id} — idle`;
+      sel.appendChild(o);
+    });
+
+    // Default to a link that is actually carrying traffic. Breaking an idle
+    // link is legitimate -- the controller correctly declines to act -- but
+    // it looks like a broken demo, and it was chosen by accident three times
+    // in a row before this. Keep an explicit choice if one was made, unless
+    // a reroute has since left it idle.
+    const firstCarrying = ordered.find((id) => carrying.has(id)) || "";
+    sel.value = keep && carrying.has(keep) ? keep : firstCarrying;
+    const go = $("break-go");
+    if (go) go.disabled = !sel.value;
+  }
+
+  function setBreakStatus(text, kind) {
+    const el = $("break-status");
+    if (!el) return;
+    el.textContent = text || "";
+    el.className = "break-status" + (kind ? ` break-${kind}` : "");
+  }
+
+  async function initBreakBar() {
+    const bar = $("break-bar");
+    if (!bar) return;
+    let opts;
+    try {
+      opts = await getJSON("/api/fault_options");
+    } catch (err) {
+      return; // backend not up yet; init runs again on reload
+    }
+    if (!opts.interactive) return;
+
+    const linkSel = $("break-link");
+    const faultSel = $("break-fault");
+    const go = $("break-go");
+
+    breakLinkOptions = opts.links || [];
+    refreshBreakLinks();
+
+    faultSel.innerHTML = "";
+    (opts.fault_types || []).forEach((ft) => {
+      const o = document.createElement("option");
+      o.value = ft;
+      o.textContent = BREAK_FAULT_LABEL[ft] || ft;
+      if (ft === "gradual_degradation") o.selected = true;
+      faultSel.appendChild(o);
+    });
+
+    linkSel.addEventListener("change", () => {
+      go.disabled = !linkSel.value;
+      setBreakStatus("");
+    });
+
+    let requestInFlight = false;
+    go.addEventListener("click", async () => {
+      const linkId = linkSel.value;
+      if (!linkId || requestInFlight) return;
+      requestInFlight = true;
+      go.disabled = true;
+      setBreakStatus("asking the network to break " + linkId + "…");
+      try {
+        const resp = await fetch("/api/inject", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            link_id: linkId,
+            fault_type: faultSel.value,
+            duration_s: opts.default_duration_s || 240,
+          }),
+        });
+        const body = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(body.detail || `HTTP ${resp.status}`);
+        setBreakStatus(
+          `breaking ${linkId} — watch the map. It recovers by itself.`, "ok");
+      } catch (err) {
+        setBreakStatus(String(err.message || err), "bad");
+      } finally {
+        // Stay disabled briefly even on success: the link is breaking, and
+        // a second request would be rejected anyway.
+        window.setTimeout(() => {
+          requestInFlight = false;
+          go.disabled = !linkSel.value;
+        }, 2000);
+      }
+    });
+
+    const recoverBtn = $("break-recover");
+    if (recoverBtn) {
+      recoverBtn.addEventListener("click", async () => {
+        recoverBtn.disabled = true;
+        setBreakStatus("restoring the broken link…");
+        try {
+          const resp = await fetch("/api/recover", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          });
+          const body = await resp.json().catch(() => ({}));
+          if (!resp.ok) throw new Error(body.detail || `HTTP ${resp.status}`);
+          setBreakStatus(`restoring ${body.link_id} — you can break another now`, "ok");
+        } catch (err) {
+          setBreakStatus(String(err.message || err), "bad");
+        } finally {
+          window.setTimeout(() => { recoverBtn.disabled = false; }, 1500);
+        }
+      });
+    }
+
+    bar.hidden = false;
+  }
+
   // ---- connection + clock ---------------------------------------------
 
   async function pollHealth() {
@@ -204,6 +395,9 @@
     } catch (err) {
       activePath = [];
     }
+    // The break dropdown labels links by whether they carry traffic, so it
+    // has to be rebuilt whenever the path moves -- including after a reroute.
+    refreshBreakLinks();
   }
 
   function edgeIsOnActivePath(srcId, dstId) {
@@ -213,6 +407,19 @@
       if ((a === srcId && b === dstId) || (a === dstId && b === srcId)) return true;
     }
     return false;
+  }
+
+  /** "forward" if the edge points the same way traffic travels, else "reverse".
+   *
+   * The dashes have to march the way the packets go. A hop recorded as
+   * s5-s6 while the path runs s6 -> s5 would otherwise animate backwards,
+   * which reads as traffic flowing the wrong way. */
+  function flowDirection(srcId, dstId) {
+    for (let i = 0; i < activePath.length - 1; i++) {
+      if (activePath[i] === srcId && activePath[i + 1] === dstId) return "forward";
+      if (activePath[i] === dstId && activePath[i + 1] === srcId) return "reverse";
+    }
+    return "forward";
   }
 
   async function loadTopology() {
@@ -258,6 +465,7 @@
           state,
           kind: "link",
           carrying: edgeIsOnActivePath(`s${e.source}`, `s${e.target}`) ? "yes" : "no",
+          flowDir: flowDirection(`s${e.source}`, `s${e.target}`),
         },
       });
     }
@@ -304,9 +512,18 @@
         },
       },
       {
-        // The path traffic is actually using right now.
+        // The path traffic is actually using right now. Drawn as a dashed
+        // line so animateFlow() can march the dashes along it -- the dashes
+        // ARE the animation; there is no separate moving sprite.
         selector: 'edge[carrying="yes"]',
-        style: { width: 7, "line-color": "#6ea8ff", opacity: 0.95 },
+        style: {
+          width: 7,
+          "line-color": "#6ea8ff",
+          opacity: 0.95,
+          "line-style": "dashed",
+          "line-dash-pattern": [10, 9],
+          "line-cap": "round",
+        },
       },
       {
         selector: 'edge[kind="host"]',
@@ -327,6 +544,7 @@
         wheelSensitivity: 0.2,
       });
       cy.on("tap", 'edge[kind="link"]', (evt) => selectLink(evt.target.data("id")));
+      startFlowAnimation();
     } else {
       cy.json({ elements: { nodes, edges } });
       cy.layout({ name: "preset", fit: true, padding: 40 }).run();
@@ -1005,6 +1223,8 @@
         loadIncidents();
       });
     });
+
+    initBreakBar();
 
     tickClock();
     setInterval(tickClock, 1000);

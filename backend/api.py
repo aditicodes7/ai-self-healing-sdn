@@ -39,6 +39,7 @@ if str(REPO_ROOT) not in sys.path:
 from common.config_loader import load_config  # noqa: E402
 from common.logging_setup import configure_logging  # noqa: E402
 from database.db import Database  # noqa: E402
+from network.failure_injector import FAULT_TYPES  # noqa: E402
 
 logger = configure_logging("backend.api")
 
@@ -47,6 +48,19 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 _config = load_config()
 _db_path = REPO_ROOT / _config.database.path
+
+# Fault requests from the dashboard are appended here as JSON lines and
+# picked up by demo/run_live_demo.py --interactive, which owns the Mininet
+# network. A file, not a socket or a queue: the injector only exists inside
+# the demo process (Mininet needs root and the live net object), the backend
+# runs separately under venv-ml, and a broker is outside the approved stack.
+# It sits beside the database so it follows whichever working directory the
+# demo configured, rather than being hardcoded.
+_commands_path = _db_path.parent / "fault_commands.jsonl"
+
+# A dashboard-triggered fault recovers itself after this long, so a demo
+# cannot be left with a permanently broken link.
+_INJECT_MIN_S, _INJECT_MAX_S, _INJECT_DEFAULT_S = 30.0, 600.0, 90.0
 
 
 def _rows_to_dicts(rows) -> list[dict]:
@@ -60,6 +74,151 @@ def _db() -> Database:
 @app.get("/api/health")
 def health() -> dict:
     return {"status": "ok", "time": time.time()}
+
+
+def _active_fault() -> tuple[str | None, float]:
+    """The link currently under a fault, and the seconds left on it.
+
+    Only one fault may be live at a time. Overlapping faults were observed
+    to defeat detection entirely: the features are ratios against each
+    link's own recent baseline, so once several links are throttled at once
+    the baselines are themselves degraded and nothing looks anomalous --
+    one measured case peaked at P=0.226, below even the abstain band.
+
+    Reads the queue the demo consumes, so it holds however the request
+    arrived: the dashboard, a second browser tab, or curl.
+    """
+    if not _commands_path.exists():
+        return None, 0.0
+    now = time.time()
+    busiest: tuple[str | None, float] = (None, 0.0)
+    cancelled: set[str] = set()
+    for line in _commands_path.read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            cmd = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        link_id = str(cmd.get("link_id"))
+        if cmd.get("action") == "recover":
+            # An explicit recovery cancels whatever was live on that link.
+            cancelled.add(link_id)
+            continue
+        remaining = (float(cmd.get("requested_at", 0.0))
+                     + float(cmd.get("duration_s", _INJECT_DEFAULT_S)) - now)
+        if remaining > 0 and remaining > busiest[1]:
+            busiest = (link_id, remaining)
+    if busiest[0] in cancelled:
+        return None, 0.0
+    return busiest
+
+
+@app.get("/api/fault_options")
+def fault_options() -> dict:
+    """What the dashboard may offer for a manual break.
+
+    `interactive` is False unless the demo has created the command queue,
+    so the dashboard can hide the control rather than offer a button that
+    silently does nothing.
+    """
+    with _db() as db:
+        rows = db.query("SELECT DISTINCT link_id FROM links ORDER BY link_id")
+    return {
+        "links": [r["link_id"] for r in rows],
+        "fault_types": list(FAULT_TYPES),
+        "interactive": _commands_path.exists(),
+        "default_duration_s": _INJECT_DEFAULT_S,
+    }
+
+
+@app.post("/api/inject")
+def inject_fault(payload: dict) -> dict:
+    """Queue a fault for the demo process to apply.
+
+    Validates against the links the controller has actually discovered, so
+    a typo or a stale dashboard cannot ask for a link that does not exist.
+    Returns 409 rather than 404 when the queue is missing: the request is
+    well-formed, the demo just is not running in interactive mode.
+    """
+    if not _commands_path.exists():
+        raise HTTPException(
+            status_code=409,
+            detail="no interactive demo is running (start it with --interactive)",
+        )
+
+    link_id = str(payload.get("link_id", "")).strip()
+    fault_type = str(payload.get("fault_type", "gradual_degradation")).strip()
+    try:
+        duration_s = float(payload.get("duration_s", _INJECT_DEFAULT_S))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="duration_s must be a number")
+
+    if fault_type not in FAULT_TYPES:
+        raise HTTPException(
+            status_code=422, detail=f"unknown fault_type {fault_type!r}; expected one of {list(FAULT_TYPES)}")
+    if not (_INJECT_MIN_S <= duration_s <= _INJECT_MAX_S):
+        raise HTTPException(
+            status_code=422,
+            detail=f"duration_s must be between {_INJECT_MIN_S:.0f} and {_INJECT_MAX_S:.0f}")
+
+    with _db() as db:
+        known = db.query_one("SELECT link_id FROM links WHERE link_id = ?", (link_id,))
+    if known is None:
+        raise HTTPException(status_code=422, detail=f"unknown link_id {link_id!r}")
+
+    # Reject a repeat request for a link that is already broken. Observed
+    # in testing: a double-click 0.4s apart queued the same fault twice,
+    # and four overlapping faults on one link is not something to discover
+    # in front of an audience.
+    busy_link, remaining = _active_fault()
+    if busy_link is not None:
+        same = busy_link == link_id
+        raise HTTPException(
+            status_code=409,
+            detail=(f"{busy_link} is still broken ({remaining:.0f}s left). "
+                    + ("Wait for it to recover, then break it again."
+                       if same else
+                       "Breaking a second link at the same time destroys the "
+                       "baselines the model compares against, so one at a time.")),
+        )
+
+    command = {
+        "requested_at": time.time(),
+        "link_id": link_id,
+        "fault_type": fault_type,
+        "duration_s": duration_s,
+    }
+    with _commands_path.open("a") as fh:
+        fh.write(json.dumps(command) + "\n")
+    logger.info("fault requested from the dashboard", extra=command)
+    return {"accepted": True, **command}
+
+
+@app.post("/api/recover")
+def recover_fault(payload: dict) -> dict:
+    """Restore a link immediately, instead of waiting out its duration.
+
+    A fault recovers itself, but during a live demonstration a wrong pick
+    should not cost minutes of waiting -- and nothing else can be broken
+    until the current one clears.
+    """
+    if not _commands_path.exists():
+        raise HTTPException(status_code=409, detail="no interactive demo is running")
+
+    link_id = str(payload.get("link_id", "")).strip()
+    busy_link, _ = _active_fault()
+    if not link_id:
+        link_id = busy_link or ""
+    if not link_id:
+        raise HTTPException(status_code=409, detail="nothing is broken right now")
+
+    command = {"requested_at": time.time(), "link_id": link_id, "action": "recover"}
+    with _commands_path.open("a") as fh:
+        fh.write(json.dumps(command) + "\n")
+    logger.info("recovery requested from the dashboard", extra=command)
+    return {"accepted": True, **command}
 
 
 @app.get("/api/topology")
